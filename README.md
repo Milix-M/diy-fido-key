@@ -4,7 +4,7 @@
 
 ## 変更点
 
-元のリポジトリのままでは、設定が反映されないまま書き込みが終わる。原因は2つある。あわせて、ボタンを押さなくても認証が通ってしまう問題を直した。
+元のリポジトリのままでは、設定が反映されないまま書き込みが終わる。原因は2つある。あわせて、ボタンを押さなくても認証が通る問題も直した。
 
 ### 設定の書き換えが消える
 
@@ -13,7 +13,7 @@
 1. 26〜55行目で `vendor/pico-fido/sdkconfig` を書き換える
 2. 60行目で `idf.py set-target esp32s3` を実行する
 
-`idf.py set-target` は既存の `sdkconfig` を削除して作り直す。ESP-IDFの `tools/idf_py_actions/core_ext.py` にある `set_target()` が `ensure_build_directory(..., True, ...)` を呼び、実行時に「Set Target to: esp32s3, new sdkconfig will be created.」と表示する。
+`idf.py set-target` は既存の `sdkconfig` を削除して作り直す。ESP-IDFの `tools/idf_py_actions/core_ext.py` にある `set_target()` は `ensure_build_directory(..., True, ...)` を呼ぶ。このとき idf.py は「Set Target to: esp32s3, new sdkconfig will be created.」と表示する。
 
 そのため1の書き換えは2で消える。残るのは既定値で、次の3つが入らない。
 
@@ -27,7 +27,7 @@
 
 ### 最後の結合で落ちる
 
-63行目が `esptool --chip esp32s3 merge-bin` を呼ぶ。esptool 4.xには `esptool` という実行ファイルも `merge-bin` というサブコマンドもない。正しくは `python3 -m esptool merge_bin`。
+63行目で `esptool --chip esp32s3 merge-bin` を呼んでいる。esptool 4.xには `esptool` という実行ファイルも `merge-bin` というサブコマンドもない。正しくは `python3 -m esptool merge_bin`。
 
 ここで落ちてもビルド自体は終わっている。3つのbinを個別に書き込めば同じ結果になる。
 
@@ -134,9 +134,9 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
 
 ## 注意
 
-- `tools/security-profiles.sh secure`とeFuseを焼く操作は戻せない。[docs/security-profiles.md](docs/security-profiles.md)を読んでから実施する
+- `tools/security-profiles.sh secure` を実行する操作と、eFuseを焼く操作は戻せない。[docs/security-profiles.md](docs/security-profiles.md)を読んでから実施する
 - Flash Encryptionを有効にするとSecure Download Modeになり、`read_flash`が通らなくなる。退避は最初に済ませる
-- FIDO認証もセキュアエレメントも無い。個人用途、実験用、バックアップ鍵向けで、物理攻撃は守備範囲外
+- FIDO Allianceの認証は取得していない。セキュアエレメントも載せていない。個人用途、実験用、バックアップ鍵向けで、物理攻撃は守備範囲外
 - バイナリを配布する場合はVID/PIDとライセンスの条件がある。[docs/distribution.md](docs/distribution.md)
 
 ## そのほか

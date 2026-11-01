@@ -1,6 +1,6 @@
 # セキュリティプロファイル（ESP32-S3）
 
-`tools/security-profiles.sh` で保護レベルを切り替える。**スクリプトはeFuseを焼かない**。ビルドと手順書だけを出す。実機では下記のeFuseが焼かれている。
+`tools/security-profiles.sh` で保護レベルを切り替える。**スクリプトはeFuseを焼かない**。ビルドと、実行するコマンドの表示だけを行う。実機では下記のeFuseが焼かれている。
 
 | プロファイル | Secure Boot | Flash Encryption | 用途 |
 |---|---|---|---|
@@ -9,7 +9,9 @@
 | `encrypted-release` | なし | release | 暗号化の試行用。SDMでは署名が無いため起動しない（実測） |
 | `secure` | RSA-3072（署名） | release | 実機で動作確認した構成 |
 
-## 実機で確定した構成（2026-10-23）
+## 実機で確定した構成
+
+2026-10-23 時点の実機で、次を確認した。
 
 - ESP32-S3のSecure Boot v2はRSA-3072のみ。ECDSAは非対応で、ECDSA鍵では起動時の署名検証に失敗する
 - Flash Encryptionを有効にするとSecure Download Mode (SDM) になる。SDMでは`read-flash`、`chip-id`、eFuseの読み出しができず、署名済みブートローダが要る。書き込みは`--force`と事前暗号化イメージを使う
@@ -38,7 +40,7 @@ esptool --port /dev/cu.usbmodemXXXX write-flash --force 0x0 build/pico-fido-secu
 
 完成したイメージで十分に動作確認してから、最後に実施する。**どれも戻せない。**
 
-| 操作 | 効果 | 戻せる |
+| 操作 | 効果 | 戻せるか |
 |---|---|---|
 | `SECURE_BOOT_EN` + digest | 署名済みイメージのみ起動（更新には署名鍵が要る） | 不可 |
 | `DIS_DOWNLOAD_MODE` | ROMダウンロードモードを無効化し、再書き込み不可にする | 不可 |
@@ -51,7 +53,7 @@ espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_DOWNLOAD_MODE
 espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_USB_JTAG
 ```
 
-注意。
+### 注意
 
 - `DIS_DOWNLOAD_MODE`を焼くと二度と書き込めなくなる。失敗したら基板ごと交換になる
 - 署名鍵と暗号化鍵の控えが無い状態で焼かない
