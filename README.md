@@ -4,40 +4,13 @@
 
 ## 変更点
 
-元のリポジトリのままでは、設定が反映されないまま書き込みが終わる。原因は2つある。あわせて、ボタンを押さなくても認証が通る問題も直した。
+元のリポジトリのままでは、設定が反映されないまま書き込みが終わる。3点を直した。
 
-### 設定の書き換えが消える
+- 設定の書き換えが消える。`tools/build-pico-fido-esp32s3.sh` が `idf.py set-target` より先に `sdkconfig` を書き換えており、`set-target` が `sdkconfig` を作り直すため
+- 最後の結合が `merge-bin` を呼んで落ちる。esptool 4.x にこの名前は無い
+- ボタンを押さなくても認証が通る。設定を書き込んでいない基板では、ボタン待ちの時間が0になるため
 
-`tools/build-pico-fido-esp32s3.sh` は次の順で動く。
-
-1. 26〜55行目で `vendor/pico-fido/sdkconfig` を書き換える
-2. 60行目で `idf.py set-target esp32s3` を実行する
-
-`idf.py set-target` は既存の `sdkconfig` を削除して作り直す。ESP-IDFの `tools/idf_py_actions/core_ext.py` にある `set_target()` は `ensure_build_directory(..., True, ...)` を呼ぶ。このとき idf.py は「Set Target to: esp32s3, new sdkconfig will be created.」と表示する。
-
-そのため1の書き換えは2で消える。残るのは既定値で、次の3つが入らない。
-
-- `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y`
-- `CONFIG_ESPTOOLPY_FLASHMODE_DIO=y`
-- PSRAM関連の設定
-
-1つ目が入らないと、ESP32-S3のUSB Serial/JTAGコンソールがTinyUSBと同じGPIO19/20を使う。USBの通信が不安定になり、Chromeからパスキーを登録するとタイムアウトする。
-
-このリポジトリでは設定の書き換えを `set-target` の後ろへ移した。
-
-### 最後の結合で落ちる
-
-63行目で `esptool --chip esp32s3 merge-bin` を呼んでいる。esptool 4.xには `esptool` という実行ファイルも `merge-bin` というサブコマンドもない。正しくは `python3 -m esptool merge_bin`。
-
-ここで落ちてもビルド自体は終わっている。3つのbinを個別に書き込めば同じ結果になる。
-
-### BOOTボタンを押すまで承認しない
-
-pico-fidoは設定を書き込んでいない基板ではボタン待ちをしない。`pico-keys-sdk/src/button.c` の `button_timeout_seconds()` が `phy_data.up_btn_present ? phy_data.up_btn : 0` を返し、待ち時間が0のときはボタンを押さなくても押されたものとして扱う。`phy`レコードはPicoKey Appで書き込む設定で、買ったままの基板では空になる。
-
-このままだと、キーを挿したままPCが遠隔操作された場合、手元で押さなくても認証が通る。このリポジトリでは待ち時間の既定を30秒にした。基板のBOOTボタン（GPIO0）を押すまで承認しない。
-
-秒数は `UP_BUTTON_SECONDS` で変えられる。0にすると元の動作に戻る。
+原因と根拠は[SETUP.md](SETUP.md)に書いた。
 
 ## 必要なもの
 
@@ -88,9 +61,11 @@ git clone -b v5.5.1 --recursive https://github.com/espressif/esp-idf.git esp-idf
 cd esp-idf-v5.5.1 && ./install.sh esp32s3
 ```
 
+WSL2の場合は、先に`sudo apt install`で前提パッケージを入れる。一覧は[SETUP.md](SETUP.md)にある。
+
 ### 2. 工場出荷フラッシュの退避
 
-読み取りだけを先に済ませる。
+読み取りだけを先に済ませる。WSL2の場合は、先にUSBをWSLへ渡す。手順は[SETUP.md](SETUP.md)にある。
 
 ```
 . ~/esp/esp-idf-v5.5.1/export.sh
@@ -114,6 +89,8 @@ git -C vendor/pico-fido submodule update --init --recursive
 sh tools/build-pico-fido-esp32s3.sh
 ```
 
+ボタン待ちの秒数は`UP_BUTTON_SECONDS`で変えられる。既定は30秒。
+
 ### 5. 書き込み
 
 BOOTボタンを押したままUSBを挿してから実行する。
@@ -134,14 +111,14 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
 
 ## 注意
 
-- `tools/security-profiles.sh secure` を実行する操作と、eFuseを焼く操作は戻せない。[docs/security-profiles.md](docs/security-profiles.md)を読んでから実施する
+- `tools/security-profiles.sh secure`を実行する操作と、eFuseを焼く操作は戻せない。[docs/security-profiles.md](docs/security-profiles.md)を読んでから実施する
 - Flash Encryptionを有効にするとSecure Download Modeになり、`read_flash`が通らなくなる。退避は最初に済ませる
 - FIDO Allianceの認証は取得していない。セキュアエレメントも載せていない。個人用途、実験用、バックアップ鍵向けで、物理攻撃は守備範囲外
 - バイナリを配布する場合はVID/PIDとライセンスの条件がある。[docs/distribution.md](docs/distribution.md)
 
 ## そのほか
 
-- [SETUP.md](SETUP.md) 詳しい手順と切り分け
+- [SETUP.md](SETUP.md) 直した理由、WSL2の準備、詰まりどころ
 - [docs/security-profiles.md](docs/security-profiles.md) 保護機能と不可逆な操作
 - [docs/distribution.md](docs/distribution.md) 公開・配布の条件
 - [docs/c3-ble.md](docs/c3-ble.md) C3とBLEの試作
