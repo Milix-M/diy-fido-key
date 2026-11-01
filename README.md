@@ -1,6 +1,6 @@
 # diy-fido-key
 
-市販のESP32-S3ボードをUSB FIDO2キーにするファームウェアと、それを焼くための手順。ST7735のLCDを載せたボードなら、登録待ちや処理中といった状態を画面に出せる。
+ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにするファームウェアと、それを焼くための手順。LCDには登録待ちや処理中といった状態を出す。
 
 ## 変更点
 
@@ -19,7 +19,7 @@
 | 項目 | 内容 |
 |---|---|
 | ボード | ESP32-S3。Flash 16MB、PSRAM 8MB、USB-OTGのデバイスモードに対応したもの |
-| LCD | 任意。0.96インチST7735S 80×160 |
+| LCD | 0.96インチ ST7735S 80×160。この構成では必須 |
 | USBケーブル | データ通信に対応したもの |
 
 LCDを載せる場合、ESP32-S3のピンと次のように接続する。
@@ -38,10 +38,10 @@ BOOTボタンは基板の裏にある。GPIO0につながっている。
 
 | 区分 | デバイス |
 |---|---|
-| 対象 | ESP32-S3 |
-| 対象外 | ESP32-C3、ESP32（無印）、ESP32-C6、ESP32-H2 |
+| 対象 | ESP32-S3と0.96インチST7735S 80×160のLCDを載せたボード |
+| 対象外 | LCDの無いボード、ESP32-C3、ESP32（無印）、ESP32-C6、ESP32-H2 |
 
-対象外のチップにはUSB-OTGのデバイスモードが無いため、USBキーとして認識されない。
+このリポジトリは上の構成以外で動くことを確かめていない。対象外のチップにはUSB-OTGのデバイスモードが無いため、USBキーとしても認識されない。
 
 ### ソフトウェア
 
@@ -121,7 +121,6 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
 - [SETUP.md](SETUP.md) 直した理由、WSL2の準備、詰まりどころ
 - [docs/security-profiles.md](docs/security-profiles.md) 保護機能と不可逆な操作
 - [docs/distribution.md](docs/distribution.md) 公開・配布の条件
-- [docs/c3-ble.md](docs/c3-ble.md) C3とBLEの試作
 - [docs/README.original.md](docs/README.original.md) 元のREADME
 - ファームウェア本体 <https://github.com/polhenarejos/pico-fido>
 - 元になった紹介記事 <https://www.makeuseof.com/made-own-yubikey-less-than-8/>

@@ -1,6 +1,6 @@
 # 原因と切り分け
 
-対象は ESP32-S3 と ST7735 80x160 の LCD を載せたボード。検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu と usbipd-win、ホストは Windows 11。
+対象は ESP32-S3とST7735 80×160のLCDを載せたボードだけ。ほかのボードは扱わない。検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu と usbipd-win、ホストは Windows 11。
 
 焼き方は[README.md](README.md)にある。ここには、直した理由と、つまずいたときの手順を書く。
 
