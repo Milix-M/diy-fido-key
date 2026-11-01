@@ -1,8 +1,6 @@
 # diy-fido-key
 
-市販のESP32-S3ボードをUSB FIDO2キーにするファームウェアと、それを焼くための手順。[4noha/diy-fido-key](https://github.com/4noha/diy-fido-key)のfork。
-
-LCD付きのボードなら、キャラクター画像と状態を画面に出せる。
+市販のESP32-S3ボードをUSB FIDO2キーにするファームウェアと、それを焼くための手順。ST7735のLCDを載せたボードなら、登録待ちや処理中といった状態を画面に出せる。
 
 ## このforkの変更
 
@@ -17,9 +15,9 @@ LCD付きのボードなら、キャラクター画像と状態を画面に出�
 
 ## 必要なもの
 
-- ESP32-S3ボード。Flash 16MB、PSRAM 8MB、native USB。0.96インチST7735S 80×160のLCD付き
+- ESP32-S3ボード。Flash 16MB、PSRAM 8MB、native USB
 - USB-OTGのデバイスモードが要る。ESP32-C3、無印ESP32、C6、H2では動かない
-- LCDの配線はSCLK=10、MOSI=11、CS=12、DC=13、RST=14
+- LCDは任意。0.96インチST7735S 80×160を使う場合の配線はSCLK=10、MOSI=11、CS=12、DC=13、RST=14
 - ESP-IDF v5.5.1
 - esptool 4.x
 
