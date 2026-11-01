@@ -1,8 +1,8 @@
 # ESP32-S3 で動かす手順
 
-このリポジトリは、元の ESP32-S3 向けビルド手順が clone しただけでは動かない問題を修正したもの。対象は ESP32-S3 + ST7735 80x160 LCD のボード。
+このリポジトリは、元の ESP32-S3 向けビルド手順が clone しただけでは動かない問題を修正したもの。対象は ESP32-S3 と ST7735 80x160 の LCD を載せたボード。
 
-検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu + usbipd-win、ホストは Windows 11。
+検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu と usbipd-win、ホストは Windows 11。
 
 ## 元の手順にあった2つの問題
 
@@ -16,15 +16,15 @@
 Set Target to: esp32s3, new sdkconfig will be created.
 ```
 
-つまり書き換えは毎回捨てられる。スクリプトを何回走らせても同じ。
+そのため書き換えは毎回捨てられる。スクリプトを何回走らせても同じ。
 
-結果として次が入らない。
+結果として次の設定が入らない。
 
-- `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y` が入らず、USB-Serial/JTAG のセカンダリコンソールが TinyUSB と GPIO19/20 を奪い合う
+- `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y` が入らず、USB-Serial/JTAG のセカンダリコンソールが TinyUSB と GPIO19/20 を取り合う
 - `CONFIG_ESPTOOLPY_FLASHMODE_DIO=y` にならず QIO のまま
 - PSRAM の設定が丸ごと入らない
 
-症状は起動ループより先に「USB が不安定で WebAuthn がタイムアウトする」として出る。`verify_flash` でダイジェストが一致していても、設定が不正なら動かない。
+症状は起動ループより先に、USB が不安定になって WebAuthn がタイムアウトする形で出る。`verify_flash` でダイジェストが一致していても、設定が不正なら動かない。
 
 ### 2. `merge-bin` は esptool 4.x に無い
 
@@ -38,9 +38,9 @@ tools/build-pico-fido-esp32s3.sh: 63: esptool: not found
 
 ## 修正内容
 
-- sdkconfig の書き換えを `set-target` の後ろへ移動し、`tools/patch-sdkconfig.py` に分離
-- 結合を `python3 -m esptool ... merge_bin` に変更
-- ユーザープレゼンス（BOOT 押下）を既定で必須化。`tools/patch-up-button.py` を追加
+- sdkconfig の書き換えを `set-target` の後ろへ移し、`tools/patch-sdkconfig.py` に分けた
+- 結合を `python3 -m esptool ... merge_bin` に変えた
+- ボタン待ちの既定値を 0 から 30 秒に変え、BOOT ボタンを押すまで承認しないようにした。`tools/patch-up-button.py` を追加
 - `UP_BUTTON_SECONDS=0` で元の挙動に戻せる
 
 ## 手順
@@ -59,7 +59,7 @@ cd esp-idf-v5.5.1 && ./install.sh esp32s3
 
 ### 1. USB を WSL に渡す
 
-Windows の管理者 PowerShell で。
+Windows の管理者 PowerShell で実行する。
 
 ```
 winget install --exact dorssel.usbipd-win
@@ -68,11 +68,11 @@ usbipd bind --busid <BUSID>
 usbipd attach --wsl --busid <BUSID> --auto-attach
 ```
 
-BOOT を押したまま USB を挿す。WSL 側で `sudo chmod 666 /dev/ttyACM0`。
+BOOT ボタンを押したまま USB を挿す。WSL 側で `sudo chmod 666 /dev/ttyACM0` を実行する。
 
 ### 2. 工場出荷フラッシュを退避
 
-読み取りだけ先にやる。
+読み取りだけを先に済ませる。
 
 ```
 . ~/esp/esp-idf-v5.5.1/export.sh
@@ -96,7 +96,7 @@ git -C vendor/pico-fido submodule update --init --recursive
 git -C vendor/pico-fido rev-parse HEAD
 ```
 
-最後の行で pico-fido のコミットを記録する。pico-fido が更新されてビルドが通らなくなったときの戻り先。
+最後の行で pico-fido のコミットを記録する。pico-fido が更新されてビルドが通らなくなったときの戻り先になる。
 
 ### 4. ビルド
 
@@ -105,11 +105,11 @@ git -C vendor/pico-fido rev-parse HEAD
 sh tools/build-pico-fido-esp32s3.sh
 ```
 
-スクリプトが LCD パッチ、set-target、sdkconfig、ボタン必須化、ビルド、結合までやる。ボタン待ちの秒数は `UP_BUTTON_SECONDS` で変えられる（既定 30）。
+スクリプトが LCD パッチ、set-target、sdkconfig、ボタン待ちの設定、ビルド、結合まで行う。待ち時間は `UP_BUTTON_SECONDS` で変えられる。既定は 30 秒。
 
 ### 5. 焼く
 
-BOOT を押したまま USB を挿してから。
+BOOT ボタンを押したまま USB を挿してから実行する。
 
 ```
 python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
@@ -119,7 +119,7 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
   0x20000 build/pico-fido-esp32s3/pico_fido.bin
 ```
 
-`Hash of data verified.` が3回出れば成功。BOOT を離して挿し直す。
+`Hash of data verified.` が3回出れば成功。BOOT ボタンを離して挿し直す。
 
 ### 6. 確認
 
@@ -127,20 +127,20 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
 usbipd detach --busid <BUSID>
 ```
 
-Windows のデバイスマネージャーに `Pico Key` が出ることを確認し、Chrome で https://webauthn.io に登録する。`PRESS / BOOT BUTTON` が出て、BOOT を押すと通る。
+Windows のデバイスマネージャーに `Pico Key` が出ることを確かめ、Chrome で https://webauthn.io に登録する。`PRESS / BOOT BUTTON` が出たら BOOT ボタンを押す。
 
-## ボタン押下が必須になる理由
+## ボタンを押すまで承認しない理由
 
-pico-keys は `phy` レコードに `PHY_UP_BTN` が無いと、ボタン待ちをせず即座に承認済みにする。`pico-keys-sdk/src/button.c` の `button_timeout_seconds()` が `phy_data.up_btn_present ? phy_data.up_btn : 0` を返し、タイムアウト 0 のときは `button_wait_start_timeout()` が `SIGNAL_USER_PRESENCE_COMPLETED` を即発行するため。
+pico-keys は `phy` レコードに `PHY_UP_BTN` が無いと、ボタン待ちをせずに即座に承認済みにする。`pico-keys-sdk/src/button.c` の `button_timeout_seconds()` が `phy_data.up_btn_present ? phy_data.up_btn : 0` を返し、待ち時間が 0 のときは `button_wait_start_timeout()` が `SIGNAL_USER_PRESENCE_COMPLETED` をすぐに発行するため。
 
-本来は PicoKey App でコミッショニングして `phy` に書く。このフォークのパッチはファーム側の既定値を変える代替で、`phy` は空のまま。LED と VID/PID の設定は入らない。
+本来は PicoKey App でコミッショニングして `phy` に書き込む。このリポジトリのパッチはファーム側の既定値を変える代替で、`phy` は空のまま。LED と VID/PID の設定は入らない。
 
 ## 詰まりどころ
 
-- `esptool: not found` — ESP-IDF の venv には `esptool.py` という名前で入る。`export.sh` を読んでから `esptool.py` か `python3 -m esptool` を使う
-- `merge-bin` が Unknown command — 4.x はアンダースコアのみ
-- HID として動いている間は `/dev/ttyACM*` が消える。再書き込みは毎回 BOOT を押しながら挿し直す
-- BOOT を押したまま起動すると ROM ダウンロードモードに固定される。焼いた後は必ず離す
-- `usbipd` がカーネル非対応と言う — `wsl --update`
-- 液晶が真っ白、色が変、向きが違う — `LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT 押下で候補が切り替わる
-- Flash Encryption を有効にすると Secure Download Mode になり `read_flash` が通らなくなる。退避は必ず最初に
+- `esptool: not found` と出る。ESP-IDF の venv には `esptool.py` という名前で入る。`export.sh` を読んでから `esptool.py` か `python3 -m esptool` を使う
+- `merge-bin` が Unknown command になる。4.x はアンダースコアのみ
+- HID として動いている間は `/dev/ttyACM*` が消える。再書き込みは毎回 BOOT ボタンを押しながら挿し直す
+- BOOT ボタンを押したまま起動すると ROM ダウンロードモードに固定される。焼いた後は必ず離す
+- `usbipd` がカーネル非対応と言う。`wsl --update` を実行する
+- 液晶が真っ白になる、色が変、向きが違う。`LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT ボタンを押すと候補が切り替わる
+- Flash Encryption を有効にすると Secure Download Mode になり `read_flash` が通らなくなる。退避は必ず最初に済ませる
