@@ -1,14 +1,14 @@
 # ESP32-S3 で動かす手順
 
-この fork は、上流の ESP32-S3 ビルドが素のクローンから通らない問題を修正したもの。対象は ESP32-S3 + ST7735 80x160 LCD のボード。
+このリポジトリは、元の ESP32-S3 向けビルド手順が clone しただけでは動かない問題を修正したもの。対象は ESP32-S3 + ST7735 80x160 LCD のボード。
 
 検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu + usbipd-win、ホストは Windows 11。
 
-## 上流が抱えていた2つの問題
+## 元の手順にあった2つの問題
 
 ### 1. `set-target` が sdkconfig を削除する
 
-上流の `tools/build-pico-fido-esp32s3.sh` は sdkconfig を書き換えてから `idf.py set-target` を呼んでいた。ところが `set-target` は既存の sdkconfig を削除して作り直す。
+元の `tools/build-pico-fido-esp32s3.sh` は sdkconfig を書き換えてから `idf.py set-target` を呼んでいた。ところが `set-target` は既存の sdkconfig を削除して作り直す。
 
 根拠は ESP-IDF の実装で、`tools/idf_py_actions/core_ext.py` の `set_target()` が `ensure_build_directory(..., True, ...)` を呼び、実行時に次を表示する。
 
@@ -41,7 +41,7 @@ tools/build-pico-fido-esp32s3.sh: 63: esptool: not found
 - sdkconfig の書き換えを `set-target` の後ろへ移動し、`tools/patch-sdkconfig.py` に分離
 - 結合を `python3 -m esptool ... merge_bin` に変更
 - ユーザープレゼンス（BOOT 押下）を既定で必須化。`tools/patch-up-button.py` を追加
-- `UP_BUTTON_SECONDS=0` で上流の挙動に戻せる
+- `UP_BUTTON_SECONDS=0` で元の挙動に戻せる
 
 ## 手順
 
@@ -96,7 +96,7 @@ git -C vendor/pico-fido submodule update --init --recursive
 git -C vendor/pico-fido rev-parse HEAD
 ```
 
-最後の行で pico-fido のコミットを記録する。上流が動いてビルドが通らなくなったときの戻り先。
+最後の行で pico-fido のコミットを記録する。pico-fido が更新されてビルドが通らなくなったときの戻り先。
 
 ### 4. ビルド
 

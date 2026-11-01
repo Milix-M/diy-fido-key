@@ -62,7 +62,7 @@ esptool --port /dev/cu.usbmodem4101 write-flash 0 build/zephyr/zephyr/zephyr.bin
 
 実機検証（2026-10-02）: 初期設定では RSSI −79〜−81 dBm、接続 timeout (`reason=8`) が発生した。BLE の既定送信出力を +9 dBm に設定し、番号照合の BOOT 検出を入力イベントに変更した後、ペアリング・bond 保存・再接続・分割 PING・GetInfo が成功した。登録要求では最初に暗号処理中の CPU 例外が発生し、FIDO スタックを 4096→8192 bytes に増やして stack sentinel を有効化したところ、例外なくユーザー確認待ちまで進んだ。最初の確認待ちは未押下で CTAP `0x2f`（時間切れ）。その後 BOOT 確認を行い、登録の自己 attestation 署名・認証署名・RP ハッシュ・UP フラグを検証できた。再起動後も同じ資格情報で再認証に成功し、署名カウンターは 1→2 に増加した。`pair` は60秒のペアリング専用テスト。
 
-参照: [Zephyr FIDO2 サンプル](https://docs.zephyrproject.org/latest/samples/subsys/authentication/fido2/README.html)。アプリ独自部分は Apache-2.0、U8g2 と Zephyr は各上流のライセンスに従う。
+参照: [Zephyr FIDO2 サンプル](https://docs.zephyrproject.org/latest/samples/subsys/authentication/fido2/README.html)。アプリ独自部分は Apache-2.0、U8g2 と Zephyr はそれぞれのプロジェクトのライセンスに従う。
 
 
 ## 暗号化バックアップ
