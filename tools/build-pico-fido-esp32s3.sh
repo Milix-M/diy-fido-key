@@ -1,6 +1,18 @@
 #!/bin/sh
 # Build pico-fido for the ESP32-S3 board (ST7735 80x160) and emit a merged image.
 # Requires ESP-IDF v5.5.1 exported in the environment (idf.py on PATH).
+#
+# 上流版からの修正点:
+#   - sdkconfig の書き換えを `set-target` の後ろへ移動。`set-target` は
+#     sdkconfig を削除して作り直すため、前に書き換えても捨てられる
+#     （ESP-IDF tools/idf_py_actions/core_ext.py の set_target() を参照）。
+#     修正前は CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y が残り、TinyUSB と
+#     GPIO19/20 を奪い合って USB が不安定になっていた。
+#   - 結合を `merge-bin` から `merge_bin` に変更し、`esptool` ではなく
+#     `python3 -m esptool` を呼ぶ。esptool 4.x にはどちらの名前も無い。
+#   - ユーザープレゼンス（BOOT 押下）を既定で必須にする。未コミッショニングだと
+#     phy.up_btn_present が偽でタイムアウト0になり、ボタンを待たずに承認される。
+#     UP_BUTTON_SECONDS=0 で上流の挙動に戻せる。
 set -e
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
@@ -19,55 +31,40 @@ fi
 # Reproducible local patches: LCD status UI.
 sh "$ROOT/tools/install-esp32-lcd.sh"
 
+: "${FIDO_USB_VID:=0x2E8A}"
+: "${FIDO_USB_PID:=0x10FE}"
+: "${UP_BUTTON_SECONDS:=30}"
+
+# set-target が sdkconfig を作り直すので、必ずこれより後に書き換える。
+idf.py -B "$BUILD" -C "$SRC" -DUSB_VID="$FIDO_USB_VID" -DUSB_PID="$FIDO_USB_PID" set-target esp32s3
+
 # On ESP32-S3 the USB Serial/JTAG console shares GPIO19/20 with USB-OTG.
 # Leaving the secondary console enabled makes the firmware watchdog-loop
 # before TinyUSB can enumerate the FIDO HID interface. DIO matches the
 # upstream build and is the only mode verified on this board.
-if [ -f "$SRC/sdkconfig" ]; then
-    python3 - "$SRC/sdkconfig" <<'PY'
-import sys
-path = sys.argv[1]
-text = open(path).read()
-replacements = {
-    '# CONFIG_ESP_CONSOLE_SECONDARY_NONE is not set': 'CONFIG_ESP_CONSOLE_SECONDARY_NONE=y',
-    'CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y': '# CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG is not set',
-    'CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED=y': '# CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED is not set',
-    'CONFIG_ESPTOOLPY_FLASHMODE_QIO=y': '# CONFIG_ESPTOOLPY_FLASHMODE_QIO is not set',
-    '# CONFIG_ESPTOOLPY_FLASHMODE_DIO is not set': 'CONFIG_ESPTOOLPY_FLASHMODE_DIO=y',
-    'CONFIG_ESPTOOLPY_FLASHMODE="qio"': 'CONFIG_ESPTOOLPY_FLASHMODE="dio"',
-}
-spiram = {
-    'CONFIG_SPIRAM': 'y',
-    'CONFIG_SPIRAM_MODE_OCT': 'y',
-    'CONFIG_SPIRAM_SPEED_80M': 'y',
-    'CONFIG_SPIRAM_USE_MALLOC': 'y',
-    'CONFIG_SPIRAM_BOOT_INIT': 'y',
-    'CONFIG_SPIRAM_IGNORE_NOTFOUND': 'y',
-}
-for old, new in replacements.items():
-    text = text.replace(old, new)
-for name, value in spiram.items():
-    lines = [l for l in text.splitlines() if not l.startswith(name + '=')]
-    lines.append('%s=%s' % (name, value))
-    text = '\n'.join(lines) + '\n'
-open(path, 'w').write(text)
-PY
+python3 "$ROOT/tools/patch-sdkconfig.py" "$SRC/sdkconfig"
+
+if [ "$UP_BUTTON_SECONDS" != "0" ]; then
+    python3 "$ROOT/tools/patch-up-button.py" --seconds "$UP_BUTTON_SECONDS" \
+        "$SRC/pico-keys-sdk/src/button.c"
+else
+    echo "user presence: upstream default (no button wait until commissioned)"
 fi
 
-: "${FIDO_USB_VID:=0x2E8A}"
-: "${FIDO_USB_PID:=0x10FE}"
-
-idf.py -B "$BUILD" -C "$SRC" -DUSB_VID="$FIDO_USB_VID" -DUSB_PID="$FIDO_USB_PID" set-target esp32s3
 idf.py -B "$BUILD" -C "$SRC" -DUSB_VID="$FIDO_USB_VID" -DUSB_PID="$FIDO_USB_PID" build
 
-esptool --chip esp32s3 merge-bin \
+python3 -m esptool --chip esp32s3 merge_bin \
     -o "$BUILD/pico_fido_full.bin" \
-    --flash-mode dio --flash-freq 80m --flash-size 4MB \
+    --flash_mode dio --flash_freq 80m --flash_size 4MB \
     0x0 "$BUILD/bootloader/bootloader.bin" \
     0x8000 "$BUILD/partition_table/partition-table.bin" \
     0x20000 "$BUILD/pico_fido.bin"
 
 echo "Merged image: $BUILD/pico_fido_full.bin"
 echo "Flash: hold BOOT (GPIO0) while plugging in, then:"
-echo "  esptool --chip esp32s3 --port /dev/cu.usbmodemXXXX write-flash 0x0 $BUILD/pico_fido_full.bin"
+echo "  python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \\"
+echo "    --flash_mode dio --flash_freq 80m --flash_size 4MB \\"
+echo "    0x0 $BUILD/bootloader/bootloader.bin \\"
+echo "    0x8000 $BUILD/partition_table/partition-table.bin \\"
+echo "    0x20000 $BUILD/pico_fido.bin"
 echo "After flashing, release BOOT and replug."

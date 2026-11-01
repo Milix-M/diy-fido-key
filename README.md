@@ -5,6 +5,9 @@ FIDO2/WebAuthn パスキーデバイス（自作 YubiKey）。
 
 出典: <https://www.makeuseof.com/made-own-yubikey-less-than-8/>
 
+> **この fork について**
+> ESP32-S3 で素のクローンから最後まで通すための修正と手順を [SETUP.md](SETUP.md) にまとめた。上流の `tools/build-pico-fido-esp32s3.sh` は、`set-target` が sdkconfig を削除して作り直すため設定の書き換えが捨てられる問題と、esptool 4.x に存在しない `merge-bin` の2点で正しく動かない。この fork では順序を修正し、ボタン押下の必須化も加えている。
+
 ## 現在の状態（2026-10-23）
 
 - **ESP32-S3 ボードで USB FIDO2 キーとして動作**。`GetInfo`（CTAP 2.3 / 1024 bytes）、登録（packed）、認証（署名 71B）、**再起動後の資格情報の永続化**を実機で確認
