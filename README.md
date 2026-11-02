@@ -23,8 +23,7 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 | 項目 | 内容 |
 |---|---|
-| ボード | ESP32-S3。Flash 16MB、PSRAM 8MB、USB-OTGのデバイスモードに対応したもの |
-| LCD | 0.96インチ ST7735S 80×160。この構成では必須 |
+| ボード | ESP32-S3。Flash 16MB、PSRAM 8MB、USB-OTGのデバイスモード対応。0.96インチST7735S 80×160のLCD付き |
 | USBケーブル | データ通信に対応したもの |
 
 ### ソフトウェア
@@ -83,7 +82,7 @@ sha256sum ~/orig.bin
 
 16MiB なので 20〜25 分かかることがある。`flash_id` で 16MB を確認しておく。
 
-### 4. 取得
+### 4. リポジトリのclone
 
 ```
 cd ~
@@ -151,9 +150,7 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 | `encrypted-release` | なし | release | 暗号化の試行用。SDMでは署名が無いため起動しない（実測） |
 | `secure` | RSA-3072（署名） | release | 実機で動作確認した構成 |
 
-### 実機で確定した構成
-
-2026-10-23 時点の実機で、次を確認した。
+### Secure BootとFlash Encryptionの制約
 
 - ESP32-S3のSecure Boot v2はRSA-3072のみ。ECDSAは非対応で、ECDSA鍵では起動時の署名検証に失敗する
 - Flash Encryptionを有効にするとSecure Download Mode (SDM) になる。SDMでは `read-flash`、`chip-id`、eFuseの読み出しができず、署名済みブートローダが要る。書き込みは `--force` と事前暗号化イメージを使う
@@ -200,7 +197,7 @@ espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_USB_JTAG
 - 現行機は未実施。`DIS_DOWNLOAD_MODE` は焼いていないので、まだ更新できる
 - 書き込み経路を残す限り、`SECURE_BOOT_EN` が無くてもSDMと暗号化で「読み出し不可・任意ファームの書き込み不可」までは達成できる。署名検証はされない
 
-### 実機で確認できたこと
+### 動作確認の記録
 
 - `GetInfo`（CTAP 2.3 / max 1024）、登録（packed / UP+AT）、認証（署名71B / counter）、再起動後の永続化、LCD表示
 - eFuseの状態。`BLOCK_KEY0` にXTS鍵、`SPI_BOOT_CRYPT_CNT = 0b001`、`SECURE_BOOT_EN` は未焼（署名はSDMの要求のために付与）
