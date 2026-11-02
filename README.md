@@ -13,9 +13,12 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 ## 元のリポジトリからの変更
 
-- sdkconfig書き換えバグの修正。`tools/build-pico-fido-esp32s3.sh` は `sdkconfig` を書き換えたあとに `idf.py set-target` を実行していた。`set-target` は `sdkconfig` を削除して作り直すので、書き換えた設定は消えていた。書き換えを `set-target` のあとに移した
-- 結合コマンドの修正。スクリプトは最後に `esptool` の `merge-bin` を呼んでいた。esptool 4.x にこのサブコマンドは無いので、そこでエラーになって止まっていた。`python3 -m esptool merge_bin` に変えた
-- BOOTボタン押下の必須化。`pico-keys-sdk/src/button.c` の `button_timeout_seconds()` は、ボタンの設定が空の基板では待ち時間に0を返していた。0のときファームはボタンを待たずに承認するので、BOOTボタンを押さなくても認証が通っていた。既定を30秒に変え、押すまで承認しないようにした
+- **sdkconfig書き換えバグの修正**
+  `tools/build-pico-fido-esp32s3.sh` は `sdkconfig` を書き換えたあとに `idf.py set-target` を実行していた。`set-target` は `sdkconfig` を削除して作り直すので、書き換えた設定は消えていた。書き換えを `set-target` のあとに移した。
+- **結合コマンドの修正**
+  スクリプトは最後に `esptool` の `merge-bin` を呼んでいた。esptool 4.x にこのサブコマンドは無いので、そこでエラーになって止まっていた。`python3 -m esptool merge_bin` に変えた。
+- **BOOTボタン押下の必須化**
+  `pico-keys-sdk/src/button.c` の `button_timeout_seconds()` は、ボタンの設定が空の基板では待ち時間に0を返していた。0のときファームはボタンを待たずに承認するので、BOOTボタンを押さなくても認証が通っていた。既定を30秒に変え、押すまで承認しないようにした。
 
 ## 必要なもの
 
