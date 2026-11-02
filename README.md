@@ -11,7 +11,7 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 このリポジトリは上の構成以外で動くことを確かめていない。対象外のチップにはUSB-OTGのデバイスモードが無いため、USBキーとしても認識されない。
 
-## 元のリポジトリからの変更
+## 変更点
 
 - `tools/build-pico-fido-esp32s3.sh` は `sdkconfig` を書き換えたあとに `idf.py set-target` を実行していた。`set-target` は `sdkconfig` を削除して作り直すので、書き換えた設定は消えていた。書き換えを `set-target` のあとに移した
 - スクリプトは最後に `esptool` の `merge-bin` を呼んでいた。esptool 4.x にこのサブコマンドは無いので、そこでエラーになって止まっていた。`python3 -m esptool merge_bin` に変えた
