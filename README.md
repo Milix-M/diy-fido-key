@@ -13,9 +13,9 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 ## 元のリポジトリからの変更
 
-- 設定の書き換えが消える。`tools/build-pico-fido-esp32s3.sh` が `idf.py set-target` より先に `sdkconfig` を書き換えており、`set-target` が `sdkconfig` を作り直すため
-- 最後の結合が `merge-bin` を呼んで落ちる。esptool 4.x にこの名前は無い
-- ボタンを押さなくても認証が通る。設定を書き込んでいない基板では、ボタン待ちの時間が0になるため
+- 設定の書き換えが消える。`tools/build-pico-fido-esp32s3.sh` が `sdkconfig` を書き換えたあと、`idf.py set-target` が `sdkconfig` を作り直す
+- 最後の結合で落ちる。esptool 4.x に `merge-bin` というサブコマンドは無い
+- ボタンを押さなくても認証が通る。設定を書き込んでいない基板では、ボタン待ちの時間が0になる
 
 ## 必要なもの
 
@@ -34,7 +34,7 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 | esptool | 4.x。ESP-IDFに同梱される |
 | Python | 3.9以降 |
 
-検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu と usbipd-win、ホストは Windows 11。
+検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu、usbipd-win、Windows 11。
 
 ## 手順
 
@@ -80,7 +80,7 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 read_flash 0x0 0x1000000 ~/orig.bin
 sha256sum ~/orig.bin
 ```
 
-16MiB なので 20〜25 分かかることがある。`flash_id` で 16MB を確認しておく。
+16MiB の読み取りには 20〜25 分かかることがある。`flash_id` で 16MB あることを確認しておく。
 
 ### 4. リポジトリのclone
 
@@ -102,7 +102,7 @@ git -C vendor/pico-fido rev-parse HEAD
 sh tools/build-pico-fido-esp32s3.sh
 ```
 
-スクリプトが LCD パッチ、set-target、sdkconfig、ボタン待ちの設定、ビルド、結合まで行う。待ち時間は `UP_BUTTON_SECONDS` で変えられる。既定は 30 秒。
+スクリプトは LCD のパッチ適用、set-target、sdkconfig の書き換え、ボタン待ちの設定、ビルド、イメージの結合までをまとめて行う。待ち時間は `UP_BUTTON_SECONDS` で変えられる。既定は 30 秒。
 
 ### 6. 書き込み
 
@@ -120,7 +120,7 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
 
 ### 7. 確認
 
-Windows のデバイスマネージャーや `lsusb` に `Pico Key` が出ることを確かめ、Chrome で <https://webauthn.io> に登録する。液晶に `PRESS / BOOT BUTTON` が出たら BOOT ボタンを押す。
+Windows のデバイスマネージャーや `lsusb` に `Pico Key` が出ることを確かめ、Chrome で <https://webauthn.io> に登録する。LCD に `PRESS / BOOT BUTTON` が出たら BOOT ボタンを押す。
 
 ### 工場出荷フラッシュに戻す
 
@@ -137,7 +137,7 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 - HID として動いている間は `/dev/ttyACM*` が消える。再書き込みは毎回 BOOT ボタンを押しながら挿し直す
 - BOOT ボタンを押したまま起動すると ROM ダウンロードモードに固定される。焼いた後は必ず離す
 - `usbipd` がカーネル非対応と言う。`wsl --update` を実行する
-- 液晶が真っ白になる、色が変、向きが違う。`LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT ボタンを押すと候補が切り替わる
+- LCD が真っ白になる、色が変、向きが違う。`LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT ボタンを押すと候補が切り替わる
 
 ## セキュリティプロファイル
 
@@ -153,8 +153,8 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 ### Secure BootとFlash Encryptionの制約
 
 - ESP32-S3のSecure Boot v2はRSA-3072のみ。ECDSAは非対応で、ECDSA鍵では起動時の署名検証に失敗する
-- Flash Encryptionを有効にするとSecure Download Mode (SDM) になる。SDMでは `read-flash`、`chip-id`、eFuseの読み出しができず、署名済みブートローダが要る。書き込みは `--force` と事前暗号化イメージを使う
-- pico-fidoは `part0` をmmapするが、暗号化が有効だとmmapが復号するため平文のFSと一致しない。`patches/pico-fido-psram-shadow.patch` でPSRAM上のシャドウに置き換え、`esp_flash_read/write`（平文）で読み書きする。`part0` には暗号化フラグを付けない
+- Flash Encryptionを有効にするとSecure Download Mode (SDM) になる。SDMでは `read-flash`、`chip-id`、eFuseの読み出しができない。署名済みのブートローダが要り、書き込みには `--force` と事前暗号化イメージを使う
+- 暗号化を有効にすると、`part0` をmmapしても平文のFSと一致しない。mmapが復号するため。`patches/pico-fido-psram-shadow.patch` でPSRAM上のシャドウに置き換え、`esp_flash_read/write`（平文）で読み書きする。`part0` には暗号化フラグを付けない
 - PSRAMは40MHz、`CONFIG_SPIRAM_IGNORE_NOTFOUND=y`（未搭載でも起動する）
 - 署名付きブートローダは32KBを超える。Secure Bootを含むプロファイルはパーティションテーブルを0x10000へ移す。`encrypted-release` は0x9000
 
@@ -175,7 +175,7 @@ esptool --port /dev/cu.usbmodemXXXX write-flash --force 0x0 build/pico-fido-secu
 
 ### 再書き込み不可にする操作
 
-完成したイメージで十分に動作確認してから、最後に実施する。どれも戻せない。
+完成したイメージで十分に動作確認してから、次を焼く。どれも戻せない。
 
 | 操作 | 効果 | 戻せるか |
 |---|---|---|
@@ -194,7 +194,7 @@ espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_USB_JTAG
 
 - `DIS_DOWNLOAD_MODE` を焼くと二度と書き込めなくなる。失敗したら基板ごと交換になる
 - 署名鍵と暗号化鍵の控えが無い状態で焼かない
-- 現行機は未実施。`DIS_DOWNLOAD_MODE` は焼いていないので、まだ更新できる
+- いま使っている基板では `DIS_DOWNLOAD_MODE` を焼いていない。まだ更新できる
 - 書き込み経路を残す限り、`SECURE_BOOT_EN` が無くてもSDMと暗号化で「読み出し不可・任意ファームの書き込み不可」までは達成できる。署名検証はされない
 
 ### 動作確認の記録
@@ -210,5 +210,4 @@ espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse SPI_BOOT_CRYPT_CNT 0x1
 
 ## 注意
 
-- Flash Encryptionを有効にするとSecure Download Modeになり、`read_flash`が通らなくなる。退避は最初に済ませる
 - FIDO Allianceの認証は取得していない。セキュアエレメントも載せていない。個人用途、実験用、バックアップ鍵向けで、物理攻撃は守備範囲外
