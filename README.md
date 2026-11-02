@@ -13,9 +13,9 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 ## 元のリポジトリからの変更
 
-- 設定の書き換えが消える。`tools/build-pico-fido-esp32s3.sh` が `sdkconfig` を書き換えたあと、`idf.py set-target` が `sdkconfig` を作り直す
-- 最後の結合で落ちる。esptool 4.x に `merge-bin` というサブコマンドは無い
-- ボタンを押さなくても認証が通る。設定を書き込んでいない基板では、ボタン待ちの時間が0になる
+- `tools/build-pico-fido-esp32s3.sh` は `sdkconfig` を書き換えたあとに `idf.py set-target` を実行する。`set-target` は `sdkconfig` を削除して作り直すので、書き換えた設定は消える
+- スクリプトは最後に `esptool` の `merge-bin` を呼ぶ。esptool 4.x にこのサブコマンドは無いので、そこでエラーになって止まる
+- `pico-keys-sdk/src/button.c` の `button_timeout_seconds()` は、ボタンの設定が空の基板では待ち時間に0を返す。待ち時間が0のときファームはボタンを待たずに承認するので、BOOTボタンを押さなくても認証が通る
 
 ## 必要なもの
 
@@ -23,7 +23,7 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 | 項目 | 内容 |
 |---|---|
-| ボード | ESP32-S3。Flash 16MB、PSRAM 8MB、USB-OTGのデバイスモード対応。0.96インチST7735S 80×160のLCD付き |
+| ボード | [AliExpressのESP32-S3 LCD付きボード](https://ja.aliexpress.com/item/1005009024098181.html)。Flash 16MB、PSRAM 8MB、USB-OTGのデバイスモード対応。0.96インチST7735S 80×160のLCD付き |
 | USBケーブル | データ通信に対応したもの |
 
 ### ソフトウェア
@@ -31,10 +31,10 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 | 項目 | 内容 |
 |---|---|
 | ESP-IDF | v5.5.1 |
-| esptool | 4.x。ESP-IDFに同梱される |
-| Python | 3.9以降 |
+| esptool | 4.x。手順1で入れるESP-IDFに同梱される |
+| Python | 3.9以降。手順1のinstall.shが使う |
 
-検証環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu、usbipd-win、Windows 11。
+実施環境は ESP-IDF v5.5.1、esptool.py 4.12.0、WSL2 Ubuntu、usbipd-win、Windows 11。ESP-IDFとesptoolは手順1で、usbipd-winは手順2で入る。
 
 ## 手順
 
@@ -54,9 +54,9 @@ sudo apt install -y git wget flex bison gperf python3 python3-pip python3-venv \
   cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
 ```
 
-### 2. USB を WSL2 に渡す
+### 2. USBデバイスをWSL2にattachする
 
-WSL2 から書き込む場合だけ必要。Windows の管理者 PowerShell で実行する。
+WSL2から書き込む場合だけ必要。BOOTボタンを押したままUSBを挿してから、Windowsの管理者PowerShellで次を実行する。
 
 ```
 winget install --exact dorssel.usbipd-win
@@ -65,9 +65,13 @@ usbipd bind --busid <BUSID>
 usbipd attach --wsl --busid <BUSID> --auto-attach
 ```
 
-BOOT ボタンを押したまま USB を挿す。WSL 側で `sudo chmod 666 /dev/ttyACM0` を実行する。
+WSL2側で、デバイスファイルの権限を変える。
 
-Windows に戻すときは `usbipd detach --busid <BUSID>`。`--auto-attach` を付けているので、BOOT ボタンを押しながら挿し直すと自動で WSL に戻る。
+```
+sudo chmod 666 /dev/ttyACM0
+```
+
+Windowsに戻すときは `usbipd detach --busid <BUSID>` を実行する。`--auto-attach` を付けているので、BOOTボタンを押しながら挿し直すと自動でWSL2に戻る。
 
 ### 3. 工場出荷フラッシュの退避
 
@@ -102,11 +106,11 @@ git -C vendor/pico-fido rev-parse HEAD
 sh tools/build-pico-fido-esp32s3.sh
 ```
 
-スクリプトは LCD のパッチ適用、set-target、sdkconfig の書き換え、ボタン待ちの設定、ビルド、イメージの結合までをまとめて行う。待ち時間は `UP_BUTTON_SECONDS` で変えられる。既定は 30 秒。
+スクリプトは LCD のパッチ適用、set-target、sdkconfig の書き換え、ボタン待ちの設定、ビルド、イメージの結合までをまとめて行う。BOOTボタンを押すまでの待ち時間は `UP_BUTTON_SECONDS` で変えられる。既定は 30 秒。
 
 ### 6. 書き込み
 
-BOOT ボタンを押したまま USB を挿してから実行する。
+手順2で接続したまま実行する。USBを抜いていた場合は、BOOTボタンを押したまま挿し直す。
 
 ```
 python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash \
@@ -132,12 +136,14 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 
 ## 詰まりどころ
 
-- `esptool: not found` と出る。ESP-IDF の venv には `esptool.py` という名前で入る。`export.sh` を読んでから `esptool.py` か `python3 -m esptool` を使う
-- `merge-bin` が Unknown command になる。4.x はアンダースコアのみ
-- HID として動いている間は `/dev/ttyACM*` が消える。再書き込みは毎回 BOOT ボタンを押しながら挿し直す
-- BOOT ボタンを押したまま起動すると ROM ダウンロードモードに固定される。焼いた後は必ず離す
-- `usbipd` がカーネル非対応と言う。`wsl --update` を実行する
-- LCD が真っ白になる、色が変、向きが違う。`LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT ボタンを押すと候補が切り替わる
+| 現象 | 対処 |
+|---|---|
+| `esptool: not found` と出る | ESP-IDF の venv には `esptool.py` という名前で入る。`export.sh` を読んでから、`esptool.py` か `python3 -m esptool` を使う |
+| `merge-bin` が Unknown command になる | esptool 4.x のサブコマンドはアンダースコアのみ。`merge_bin` を使う |
+| HID として動いている間、`/dev/ttyACM*` が消える | 再書き込みのたびに、BOOT ボタンを押しながら挿し直す |
+| BOOT ボタンを押したまま起動して ROM ダウンロードモードに固定される | 焼いたあとに BOOT ボタンを離す |
+| `usbipd` がカーネル非対応と言う | `wsl --update` を実行する |
+| LCD が真っ白になる、色が変、向きが違う | `LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT ボタンを押すと候補が切り替わる |
 
 ## セキュリティプロファイル
 
@@ -147,13 +153,13 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 |---|---|---|---|
 | `backup` | なし | なし | 開発・検証（再書き込み自由） |
 | `encrypted` | RSA-3072で署名（eFuseは焼かない） | development | 暗号化の試行 |
-| `encrypted-release` | なし | release | 暗号化の試行用。SDMでは署名が無いため起動しない（実測） |
+| `encrypted-release` | なし | release | 暗号化の試行用。Secure Download Modeでは署名が無いため起動しない（実測） |
 | `secure` | RSA-3072（署名） | release | 実機で動作確認した構成 |
 
 ### Secure BootとFlash Encryptionの制約
 
 - ESP32-S3のSecure Boot v2はRSA-3072のみ。ECDSAは非対応で、ECDSA鍵では起動時の署名検証に失敗する
-- Flash Encryptionを有効にするとSecure Download Mode (SDM) になる。SDMでは `read-flash`、`chip-id`、eFuseの読み出しができない。署名済みのブートローダが要り、書き込みには `--force` と事前暗号化イメージを使う
+- Flash Encryptionを有効にするとSecure Download Mode になる。このモードでは `read-flash`、`chip-id`、eFuseの読み出しができない。署名済みのブートローダが要り、書き込みには `--force` と事前暗号化イメージを使う
 - 暗号化を有効にすると、`part0` をmmapしても平文のFSと一致しない。mmapが復号するため。`patches/pico-fido-psram-shadow.patch` でPSRAM上のシャドウに置き換え、`esp_flash_read/write`（平文）で読み書きする。`part0` には暗号化フラグを付けない
 - PSRAMは40MHz、`CONFIG_SPIRAM_IGNORE_NOTFOUND=y`（未搭載でも起動する）
 - 署名付きブートローダは32KBを超える。Secure Bootを含むプロファイルはパーティションテーブルを0x10000へ移す。`encrypted-release` は0x9000
@@ -164,7 +170,7 @@ esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 - フラッシュ暗号化鍵: `~/.config/diy-fido-key/secure-boot/flash-encryption-key.bin`
 - どちらもオフラインで2箇所に保管する。失うと更新できなくなる
 
-### SDM有効後の焼き方
+### Secure Download Modeを有効にしたあとの焼き方
 
 ```
 sh tools/security-profiles.sh secure
@@ -195,18 +201,7 @@ espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_USB_JTAG
 - `DIS_DOWNLOAD_MODE` を焼くと二度と書き込めなくなる。失敗したら基板ごと交換になる
 - 署名鍵と暗号化鍵の控えが無い状態で焼かない
 - いま使っている基板では `DIS_DOWNLOAD_MODE` を焼いていない。まだ更新できる
-- 書き込み経路を残す限り、`SECURE_BOOT_EN` が無くてもSDMと暗号化で「読み出し不可・任意ファームの書き込み不可」までは達成できる。署名検証はされない
-
-### 動作確認の記録
-
-- `GetInfo`（CTAP 2.3 / max 1024）、登録（packed / UP+AT）、認証（署名71B / counter）、再起動後の永続化、LCD表示
-- eFuseの状態。`BLOCK_KEY0` にXTS鍵、`SPI_BOOT_CRYPT_CNT = 0b001`、`SECURE_BOOT_EN` は未焼（署名はSDMの要求のために付与）
-- 実機で実行したeFuse操作（一方通行）
-
-```
-espefuse.py --port /dev/cu.usbmodemXXXX burn_key BLOCK_KEY0 flash-encryption-key.bin XTS_AES_128_KEY
-espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse SPI_BOOT_CRYPT_CNT 0x1
-```
+- 書き込み経路を残す限り、`SECURE_BOOT_EN` が無くてもSecure Download Modeと暗号化で「読み出し不可・任意ファームの書き込み不可」までは達成できる。署名検証はされない
 
 ## 注意
 
