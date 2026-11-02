@@ -11,15 +11,11 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 
 このリポジトリは上の構成以外で動くことを確かめていない。対象外のチップにはUSB-OTGのデバイスモードが無いため、USBキーとしても認識されない。
 
-## 変更点
-
-元のリポジトリのままでは、設定が反映されないまま書き込みが終わる。3点を直した。
+## 元のリポジトリからの変更
 
 - 設定の書き換えが消える。`tools/build-pico-fido-esp32s3.sh` が `idf.py set-target` より先に `sdkconfig` を書き換えており、`set-target` が `sdkconfig` を作り直すため
 - 最後の結合が `merge-bin` を呼んで落ちる。esptool 4.x にこの名前は無い
 - ボタンを押さなくても認証が通る。設定を書き込んでいない基板では、ボタン待ちの時間が0になるため
-
-原因と根拠は[直した理由](#直した理由)に書いた。
 
 ## 必要なもの
 
@@ -30,18 +26,6 @@ ESP32-S3とST7735 80×160のLCDを載せたボードを、USB FIDO2キーにす�
 | ボード | ESP32-S3。Flash 16MB、PSRAM 8MB、USB-OTGのデバイスモードに対応したもの |
 | LCD | 0.96インチ ST7735S 80×160。この構成では必須 |
 | USBケーブル | データ通信に対応したもの |
-
-LCDとESP32-S3のピンは次のように接続する。
-
-| LCDの信号 | ESP32-S3のピン |
-|---|---|
-| SCLK | GPIO10 |
-| MOSI | GPIO11 |
-| CS | GPIO12 |
-| DC | GPIO13 |
-| RST | GPIO14 |
-
-BOOTボタンは基板の裏にある。GPIO0につながっている。
 
 ### ソフトウェア
 
@@ -147,53 +131,6 @@ Windows のデバイスマネージャーや `lsusb` に `Pico Key` が出るこ
 esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 ```
 
-## 直した理由
-
-### 設定の書き換えが消える
-
-元の `tools/build-pico-fido-esp32s3.sh` は次の順で動いていた。
-
-1. 26〜55行目で `vendor/pico-fido/sdkconfig` を書き換える
-2. 60行目で `idf.py set-target esp32s3` を実行する
-
-`idf.py set-target` は既存の `sdkconfig` を削除して作り直す。根拠は ESP-IDF の実装で、`tools/idf_py_actions/core_ext.py` の `set_target()` が `ensure_build_directory(..., True, ...)` を呼ぶ。このとき idf.py は次を表示する。
-
-```
-Set Target to: esp32s3, new sdkconfig will be created.
-```
-
-そのため1の書き換えは2で消える。スクリプトを何回走らせても同じ。
-
-結果として次の設定が入らない。
-
-- `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y` が入らず、USB-Serial/JTAG のセカンダリコンソールが TinyUSB と GPIO19/20 を取り合う
-- `CONFIG_ESPTOOLPY_FLASHMODE_DIO=y` にならず QIO のまま
-- PSRAM の設定が丸ごと入らない
-
-症状は起動ループより先に、USB が不安定になって WebAuthn がタイムアウトする形で出る。`verify_flash` でダイジェストが一致していても、設定が不正なら動かない。
-
-このリポジトリでは書き換えを `set-target` の後ろへ移し、`tools/patch-sdkconfig.py` に分けた。
-
-### 最後の結合で落ちる
-
-63行目で `esptool --chip esp32s3 merge-bin` を呼んでいる。esptool 4.12 のサブコマンドはアンダースコアのみで、実行ファイル名も `esptool.py`。
-
-```
-tools/build-pico-fido-esp32s3.sh: 63: esptool: not found
-```
-
-この行で落ちるが、ビルド自体は `Project build complete.` で終わっている。3つの bin を個別に書けば同じ結果になる。
-
-このリポジトリでは `python3 -m esptool ... merge_bin` に変えた。
-
-### ボタンを押すまで承認しない
-
-pico-keys は `phy` レコードに `PHY_UP_BTN` が無いと、ボタン待ちをせずに即座に承認済みにする。`pico-keys-sdk/src/button.c` の `button_timeout_seconds()` が `phy_data.up_btn_present ? phy_data.up_btn : 0` を返し、待ち時間が 0 のときは `button_wait_start_timeout()` が `SIGNAL_USER_PRESENCE_COMPLETED` をすぐに発行するため。
-
-本来は PicoKey App でコミッショニングして `phy` に書き込む。このリポジトリのパッチはファーム側の既定値を 30 秒に変える代替で、`phy` は空のまま。LED と VID/PID の設定は入らない。`tools/patch-up-button.py` が `button.c` の既定値を書き換える。
-
-`UP_BUTTON_SECONDS=0` で元の挙動に戻せる。
-
 ## 詰まりどころ
 
 - `esptool: not found` と出る。ESP-IDF の venv には `esptool.py` という名前で入る。`export.sh` を読んでから `esptool.py` か `python3 -m esptool` を使う
@@ -202,19 +139,79 @@ pico-keys は `phy` レコードに `PHY_UP_BTN` が無いと、ボタン待ち�
 - BOOT ボタンを押したまま起動すると ROM ダウンロードモードに固定される。焼いた後は必ず離す
 - `usbipd` がカーネル非対応と言う。`wsl --update` を実行する
 - 液晶が真っ白になる、色が変、向きが違う。`LCD_CALIBRATION` / `LCD_COLOR_CAL` ビルドで校正する。BOOT ボタンを押すと候補が切り替わる
-- Flash Encryption を有効にすると Secure Download Mode になり `read_flash` が通らなくなる。退避は必ず最初に済ませる
+
+## セキュリティプロファイル
+
+`tools/security-profiles.sh` で保護レベルを切り替える。スクリプトは eFuse を焼かない。ビルドと、実行するコマンドの表示だけをする。
+
+| プロファイル | Secure Boot | Flash Encryption | 用途 |
+|---|---|---|---|
+| `backup` | なし | なし | 開発・検証（再書き込み自由） |
+| `encrypted` | RSA-3072で署名（eFuseは焼かない） | development | 暗号化の試行 |
+| `encrypted-release` | なし | release | 暗号化の試行用。SDMでは署名が無いため起動しない（実測） |
+| `secure` | RSA-3072（署名） | release | 実機で動作確認した構成 |
+
+### 実機で確定した構成
+
+2026-10-23 時点の実機で、次を確認した。
+
+- ESP32-S3のSecure Boot v2はRSA-3072のみ。ECDSAは非対応で、ECDSA鍵では起動時の署名検証に失敗する
+- Flash Encryptionを有効にするとSecure Download Mode (SDM) になる。SDMでは `read-flash`、`chip-id`、eFuseの読み出しができず、署名済みブートローダが要る。書き込みは `--force` と事前暗号化イメージを使う
+- pico-fidoは `part0` をmmapするが、暗号化が有効だとmmapが復号するため平文のFSと一致しない。`patches/pico-fido-psram-shadow.patch` でPSRAM上のシャドウに置き換え、`esp_flash_read/write`（平文）で読み書きする。`part0` には暗号化フラグを付けない
+- PSRAMは40MHz、`CONFIG_SPIRAM_IGNORE_NOTFOUND=y`（未搭載でも起動する）
+- 署名付きブートローダは32KBを超える。Secure Bootを含むプロファイルはパーティションテーブルを0x10000へ移す。`encrypted-release` は0x9000
+
+### 鍵
+
+- 署名鍵（RSA-3072）: `~/.config/diy-fido-key/secure-boot/secure-boot-rsa3072.pem`
+- フラッシュ暗号化鍵: `~/.config/diy-fido-key/secure-boot/flash-encryption-key.bin`
+- どちらもオフラインで2箇所に保管する。失うと更新できなくなる
+
+### SDM有効後の焼き方
+
+```
+sh tools/security-profiles.sh secure
+esptool --port /dev/cu.usbmodemXXXX write-flash --force 0x0 build/pico-fido-secure/pico_fido_secure.enc.bin
+```
+
+書き込み後はBOOTボタンを離してUSBを挿し直す。`part0` のレイアウトを変えたときだけ、`esptool --port ... erase-region 0x200000 0x100000` で保存領域を作り直す。
+
+### 再書き込み不可にする操作
+
+完成したイメージで十分に動作確認してから、最後に実施する。どれも戻せない。
+
+| 操作 | 効果 | 戻せるか |
+|---|---|---|
+| `SECURE_BOOT_EN` + digest | 署名済みイメージのみ起動（更新には署名鍵が要る） | 不可 |
+| `DIS_DOWNLOAD_MODE` | ROMダウンロードモードを無効化し、再書き込み不可にする | 不可 |
+| `DIS_USB_JTAG` / `DIS_PAD_JTAG` | JTAG経路を無効化 | 不可 |
+| pico-fido Secure Lock | MKEKをOTPに固定し、資格情報を端末に紐付ける | 不可 |
+
+```
+# 最後に実行する。事前に署名済みイメージでの起動確認と鍵の退避を済ませる
+espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_DOWNLOAD_MODE
+espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse DIS_USB_JTAG
+```
+
+### 焼く前の注意
+
+- `DIS_DOWNLOAD_MODE` を焼くと二度と書き込めなくなる。失敗したら基板ごと交換になる
+- 署名鍵と暗号化鍵の控えが無い状態で焼かない
+- 現行機は未実施。`DIS_DOWNLOAD_MODE` は焼いていないので、まだ更新できる
+- 書き込み経路を残す限り、`SECURE_BOOT_EN` が無くてもSDMと暗号化で「読み出し不可・任意ファームの書き込み不可」までは達成できる。署名検証はされない
+
+### 実機で確認できたこと
+
+- `GetInfo`（CTAP 2.3 / max 1024）、登録（packed / UP+AT）、認証（署名71B / counter）、再起動後の永続化、LCD表示
+- eFuseの状態。`BLOCK_KEY0` にXTS鍵、`SPI_BOOT_CRYPT_CNT = 0b001`、`SECURE_BOOT_EN` は未焼（署名はSDMの要求のために付与）
+- 実機で実行したeFuse操作（一方通行）
+
+```
+espefuse.py --port /dev/cu.usbmodemXXXX burn_key BLOCK_KEY0 flash-encryption-key.bin XTS_AES_128_KEY
+espefuse.py --port /dev/cu.usbmodemXXXX burn_efuse SPI_BOOT_CRYPT_CNT 0x1
+```
 
 ## 注意
 
-- `tools/security-profiles.sh secure`を実行する操作と、eFuseを焼く操作は戻せない。[docs/security-profiles.md](docs/security-profiles.md)を読んでから実施する
 - Flash Encryptionを有効にするとSecure Download Modeになり、`read_flash`が通らなくなる。退避は最初に済ませる
 - FIDO Allianceの認証は取得していない。セキュアエレメントも載せていない。個人用途、実験用、バックアップ鍵向けで、物理攻撃は守備範囲外
-- バイナリを配布する場合はVID/PIDとライセンスの条件がある。[docs/distribution.md](docs/distribution.md)
-
-## リンク
-
-- [docs/security-profiles.md](docs/security-profiles.md) 保護機能と不可逆な操作
-- [docs/distribution.md](docs/distribution.md) 公開・配布の条件
-- [docs/README.original.md](docs/README.original.md) 元のREADME
-- ファームウェア本体 <https://github.com/polhenarejos/pico-fido>
-- 元になった紹介記事 <https://www.makeuseof.com/made-own-yubikey-less-than-8/>
