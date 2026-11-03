@@ -143,6 +143,44 @@ Windows のデバイスマネージャーや `lsusb` に `Pico Key` が出るこ
 esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x0 ~/orig.bin
 ```
 
+## ドット絵を変える
+
+LCDの絵は `esp32-lcd/mascot_80x80.h` に入っている。画面の上から4px下に80×96で置き、状態の文字はその下に描く。
+
+### 1. PNGを用意する
+
+80×96ちょうどの大きさにする。それ以外の大きさだと縮小されてドットがぼける。背景は白でよい。外周から白を塗りつぶして抜くので、絵の内側の白は残る。
+
+### 2. ヘッダに変換する
+
+```
+sudo apt install -y python3-pil
+python3 tools/make-lcd-image.py 絵.png esp32-lcd/mascot_80x80.h --crop --width 80 --height 96
+```
+
+`--crop` は絵の範囲まで切り抜く。余白を足すときは `--padding 4` を付ける。同じフォルダに `mascot_80x80.preview.png` が出る。黒地に4倍で描いた確認用の画像。
+
+### 3. ビルドして焼き直す
+
+```
+. ~/esp/esp-idf-v5.5.1/export.sh
+sh tools/build-pico-fido-esp32s3.sh
+```
+
+ビルドスクリプトが `tools/install-esp32-lcd.sh` を呼ぶので、ヘッダは `vendor/pico-fido/pico-keys-sdk/src/lcd/` に入る。書き込みは「6. 書き込み」と同じ手順で行う。
+
+### 絵を消す
+
+```
+rm esp32-lcd/mascot_80x80.h
+```
+
+`install-esp32-lcd.sh` がヘッダの有無を見て、簡単な顔のプレースホルダに切り替える。
+
+### 文字を変える
+
+状態の文字は `esp32-lcd/fido_status_lcd.c` の `label` と `hint` にある。色は `accent` で決めている。
+
 ## 詰まりどころ
 
 | 現象 | 対処 |
