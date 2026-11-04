@@ -162,12 +162,13 @@ python3 tools/make-lcd-image.py 絵.png esp32-lcd/mascot_80x80.h --crop --width 
 
 ### 3. ビルドして焼き直す
 
-```
-. ~/esp/esp-idf-v5.5.1/export.sh
-sh tools/build-pico-fido-esp32s3.sh
-```
+PNGを変更したら、この節の「2. ヘッダに変換する」の変換コマンドをもう一度実行し、続けて「手順」の次の3つをやり直す。
 
-ビルドスクリプトが `tools/install-esp32-lcd.sh` を呼ぶので、ヘッダは `vendor/pico-fido/pico-keys-sdk/src/lcd/` に入る。書き込みは「6. 書き込み」と同じ手順で行う。
+1. [5. ビルド](#5-ビルド)で、新しいヘッダを含むファームウェアを作る。
+2. [6. 書き込み](#6-書き込み)で、ボードに書き込む。
+3. [7. 確認](#7-確認)で、認証とLCDの絵を確かめる。
+
+ビルドスクリプトが `tools/install-esp32-lcd.sh` を呼ぶので、ヘッダは `vendor/pico-fido/pico-keys-sdk/src/lcd/` に入る。
 
 ### 絵を消す
 
