@@ -154,7 +154,7 @@ LCDの絵は `esp32-lcd/mascot_80x80.h` に入っている。画面の上から4
 ### 2. ヘッダに変換する
 
 ```
-sudo apt install -y python3-pil
+python3 -m pip install Pillow
 python3 tools/make-lcd-image.py 絵.png esp32-lcd/mascot_80x80.h --crop --width 80 --height 96
 ```
 
