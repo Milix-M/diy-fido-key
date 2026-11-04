@@ -1,0 +1,62 @@
+--- a/src/button.c
++++ b/src/button.c
+@@ -30,4 +30,7 @@
+ #include "usb.h"
+ #include "signal.h"
++#ifdef FIDO_STATUS_LCD
++#include "fido_status_lcd.h"
++#endif
+ 
+ extern void execute_tasks(void);
+@@ -37,4 +40,5 @@
+ static bool req_button_pending = false;
+ #ifndef ENABLE_EMULATION
++#define BUTTON_HELD_TIMEOUT_MS 15000u
+ static bool async_button_wait = false;
+ static bool async_button_pressed = false;
+@@ -42,4 +46,14 @@
+ static uint32_t async_button_timeout = 0;
+ static uint32_t async_button_led_mode = MODE_MOUNTED;
++
++#ifdef FIDO_STATUS_LCD
++static void button_wait_lcd_update(void) {
++    uint32_t limit_ms = async_button_timeout;
++    if (async_button_pressed && limit_ms > BUTTON_HELD_TIMEOUT_MS) {
++        limit_ms = BUTTON_HELD_TIMEOUT_MS;
++    }
++    fido_status_lcd_set_button_wait(async_button_started, async_button_timeout, limit_ms);
++}
++#endif
+ #endif
+ 
+@@ -135,4 +149,7 @@
+     async_button_led_mode = led_get_mode();
+     req_button_pending = true;
++#ifdef FIDO_STATUS_LCD
++    button_wait_lcd_update();
++#endif
+     led_set_mode(MODE_BUTTON);
+ }
+@@ -146,4 +163,7 @@
+     if (!async_button_pressed && pressed) {
+         async_button_pressed = true;
++#ifdef FIDO_STATUS_LCD
++        button_wait_lcd_update();
++#endif
+     }
+     button_event_t result = BUTTON_EV_NONE;
+@@ -151,5 +171,5 @@
+         result = BUTTON_EV_CANCELLED;
+     }
+-    else if (async_button_started + async_button_timeout < now || (async_button_pressed && async_button_started + 15000 < now)) {
++    else if (async_button_started + async_button_timeout < now || (async_button_pressed && async_button_started + BUTTON_HELD_TIMEOUT_MS < now)) {
+         result = BUTTON_EV_TIMEOUT;
+     }
+@@ -163,4 +183,7 @@
+     req_button_pending = false;
+     led_set_mode(async_button_led_mode);
++#ifdef FIDO_STATUS_LCD
++    fido_status_lcd_set_button_wait(0, 0, 0);
++#endif
+     uint32_t flag = 0;
+     if (result == BUTTON_EV_PRESSED) {

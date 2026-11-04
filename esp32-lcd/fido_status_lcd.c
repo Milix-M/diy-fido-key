@@ -23,6 +23,7 @@
 #include "esp_heap_caps.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "compat/esp_compat.h"
 #include "led/led.h"
 #include "font5x7.h"
 
@@ -355,6 +356,41 @@ static screen_t screen_from_led(uint32_t mode) {
     return SCREEN_LOCKED;
 }
 
+typedef struct {
+    uint32_t started_ms;
+    uint32_t timeout_ms;
+    uint32_t limit_ms;
+} button_wait_t;
+
+static portMUX_TYPE s_button_wait_lock = portMUX_INITIALIZER_UNLOCKED;
+static button_wait_t s_button_wait;
+
+void fido_status_lcd_set_button_wait(uint32_t started_ms, uint32_t timeout_ms,
+                                     uint32_t limit_ms) {
+    portENTER_CRITICAL(&s_button_wait_lock);
+    s_button_wait = (button_wait_t){started_ms, timeout_ms, limit_ms};
+    portEXIT_CRITICAL(&s_button_wait_lock);
+}
+
+static bool draw_button_wait_bar(int y, uint16_t color) {
+    portENTER_CRITICAL(&s_button_wait_lock);
+    button_wait_t wait = s_button_wait;
+    portEXIT_CRITICAL(&s_button_wait_lock);
+    if (wait.timeout_ms == 0) {
+        return false;
+    }
+
+    uint32_t elapsed_ms = board_millis() - wait.started_ms;
+    if (elapsed_ms < wait.limit_ms) {
+        uint32_t remaining_ms = wait.limit_ms - elapsed_ms;
+        // Round up so the last pixel remains visible until the deadline.
+        int width = ((uint64_t)remaining_ms * LCD_W + wait.timeout_ms - 1) /
+                    wait.timeout_ms;
+        fb_rect(0, y, width, 4, color);
+    }
+    return true;
+}
+
 static void draw_screen(screen_t screen, uint32_t tick) {
     fb_fill(COL_BG);
 
@@ -396,7 +432,7 @@ static void draw_screen(screen_t screen, uint32_t tick) {
     fb_text_center(106, label, 2, accent);
     fb_text_center(128, hint, 1, COL_GREY);
 
-    /* Activity bar: sweeps while working, blinks while waiting for the button. */
+    /* The bar shows activity during processing and time remaining during confirmation. */
     int bar_y = LCD_H - 6;
     uint16_t bar_col = COL_BG_SOFT;
     fb_rect(0, bar_y, LCD_W, 4, bar_col);
@@ -405,7 +441,7 @@ static void draw_screen(screen_t screen, uint32_t tick) {
         fb_rect(pos, bar_y, 20, 4, accent);
     }
     else if (screen == SCREEN_CONFIRM) {
-        if ((tick / 5) & 1) {
+        if (!draw_button_wait_bar(bar_y, accent) && ((tick / 5) & 1)) {
             fb_frame(0, 0, LCD_W, LCD_H, 3, accent);
         }
     }

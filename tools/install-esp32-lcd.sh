@@ -23,6 +23,11 @@ else
     echo "no mascot_80x80.h; display will use the text placeholder"
 fi
 
+COUNTDOWN_PATCH="$SRC/button-countdown.patch"
+if ! git -C "$SDK" apply --reverse --check "$COUNTDOWN_PATCH" 2>/dev/null; then
+    git -C "$SDK" apply "$COUNTDOWN_PATCH"
+fi
+
 IMPORT="$SDK/picokeys_sdk_import.cmake"
 if ! grep -q 'src/lcd/fido_status_lcd.c' "$IMPORT"; then
     perl -0pi -e 's{(\$\{CMAKE_CURRENT_LIST_DIR\}/src/led/led\.c\n)}{$1    \$\{CMAKE_CURRENT_LIST_DIR\}/src/lcd/fido_status_lcd.c\n}' "$IMPORT"
