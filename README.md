@@ -196,23 +196,52 @@ rm esp32-lcd/mascot_80x80.h
 
 ## セキュリティプロファイル
 
-`tools/security-profiles.sh` で署名・暗号化したファームウェアを作る。実機の保護設定と動作確認は別途必要。
+`tools/security-profiles.sh` で署名・暗号化したファームウェアを作る。表は未保護の基板に各設定を適用した後の違い。ビルドだけでは実機の設定は変わらない。
 
-| プロファイル | 起動時の署名検証 | フラッシュ暗号化 | 用途 |
+| プロファイル | 保護機能 | できる更新 | 戻せなくなること |
 |---|---|---|---|
-| `backup` | なし | なし | 通常ビルド・更新試験 |
-| `encrypted` | あり | Developmentモード | 開発用 |
-| `encrypted-release` | なし | Releaseモード | 暗号化の検証用 |
-| `secure` | あり | Releaseモード | 本番向けの候補。実機試験が必要 |
+| `backup` | 署名検証・暗号化なし | 通常の書き込み | 保護設定は追加しない |
+| `encrypted` | 署名検証＋Developmentモードの暗号化 | 署名済みファームウェアを基板側で暗号化して書き込める | 署名検証とJTAG停止は解除できない |
+| `encrypted-release` | Releaseモードの暗号化。署名検証なし | 暗号化鍵を使い、PCで暗号化してから書き込める | 暗号化・JTAG停止・Secure Download Modeを解除できない |
+| `secure` | 署名検証＋Releaseモードの暗号化 | 署名鍵と暗号化鍵を使い、署名・暗号化してから書き込める | 署名検証・暗号化・JTAG停止・Secure Download Modeを解除できない |
+
+JTAGはデバッグ用の接続機能。Secure Download Modeは書き込みを残し、読み出しなどを制限するモード。`encrypted` の暗号化解除は、設定回数のカウンターが書き込み禁止でなく、残り回数がある場合に1回だけ可能。ただし署名検証とJTAG停止は残る。[署名検証の制約](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/security/secure-boot-v2.html#restrictions-after-secure-boot-is-enabled)と[暗号化の解除条件](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/security/flash-encryption.html#disabling-flash-encryption)も参照。
+
+`backup` を選び直しても、実機に書いた保護設定は元に戻らない。実機に書き込んで保護した暗号化鍵も消去・交換できない。`secure` は本番向けの候補で、設定後の実機試験が必要。
+
+暗号化鍵を基板が自動生成した場合はPCへ取り出せない。ReleaseモードでPCから更新するには、PCで作った鍵を初回起動前に基板へ設定し、その控えを保管しておく。
+
+### 鍵を作る（初回のみ）
+
+`secure` 用に署名鍵（RSA-3072）と暗号化鍵（32バイト）を作る。すでに鍵がある場合は作り直さない。
+
+1. BOOTボタンを押しながらUSBを挿し、手順2でWSL2に接続して実機の設定を読む。署名・暗号化済みなら、その基板に使った鍵を用意し、2・3は行わない。
+
+   ```sh
+   . ~/esp/esp-idf-v5.5.1/export.sh
+   python3 -m esptool --chip esp32s3 --no-stub -p /dev/ttyACM0 get_security_info
+   ```
+
+2. 所有者だけが読める権限でファイルを作るようにし、保存先を用意する。
+
+   ```sh
+   umask 077
+   key_dir="$HOME/.config/diy-fido-key/secure-boot"
+   mkdir -p "$key_dir"
+   ```
+
+3. 署名鍵と暗号化鍵を作る。次のコマンドは既存ファイルを上書きしない。
+
+   ```sh
+   test -e "$key_dir/secure-boot-rsa3072.pem" || \
+     python3 -m espsecure generate_signing_key --version 2 --scheme rsa3072 "$key_dir/secure-boot-rsa3072.pem"
+   test -e "$key_dir/flash-encryption-key.bin" || \
+     python3 -m espsecure generate_flash_encryption_key --keylen 256 "$key_dir/flash-encryption-key.bin"
+   ```
+
+作成後は「本番で使う前に」に沿って鍵を退避する。ここまでの操作は実機に鍵を書き込まない。暗号化鍵は基板ごとに別のものを使う。
 
 ### ビルドする
-
-`secure` では次の鍵を `~/.config/diy-fido-key/secure-boot/` に用意する。ファイルの権限は所有者だけが読み書きできる `600` にする。
-
-| ファイル | 内容 |
-|---|---|
-| `secure-boot-rsa3072.pem` | ファームウェアの署名鍵（RSA-3072） |
-| `flash-encryption-key.bin` | フラッシュ暗号化鍵（32バイト） |
 
 ```sh
 . ~/esp/esp-idf-v5.5.1/export.sh
