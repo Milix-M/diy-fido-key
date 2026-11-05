@@ -1,0 +1,50 @@
+--- a/src/fs/low_flash.c
++++ b/src/fs/low_flash.c
+@@ -35,8 +35,10 @@
+   #include "esp_heap_caps.h"
+   #include "esp_flash.h"
++  #include "esp_err.h"
+   const esp_partition_t *part0;
+   uint8_t *fido_flash_shadow;
+   static esp_err_t fido_flash_erase_shadow(size_t off, size_t len) {
+       esp_err_t err = esp_partition_erase_range(part0, off, len);
++      ESP_ERROR_CHECK(err);
+       if (err == ESP_OK && fido_flash_shadow) memset(fido_flash_shadow + off, 0xFF, len);
+       return err;
+@@ -44,4 +46,5 @@
+   static esp_err_t fido_flash_program_shadow(size_t off, const void *src, size_t len) {
+       esp_err_t err = esp_partition_write(part0, off, src, len);
++      ESP_ERROR_CHECK(err);
+       if (err == ESP_OK && fido_flash_shadow) memcpy(fido_flash_shadow + off, src, len);
+       return err;
+@@ -368,10 +371,9 @@
+             if (fido_flash_shadow != NULL) {
+                 uint8_t *bounce = heap_caps_malloc(4096, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
++                ESP_ERROR_CHECK(bounce ? ESP_OK : ESP_ERR_NO_MEM);
+                 if (bounce != NULL) {
+                     for (size_t off = 0; off < part0->size; off += 4096) {
+                         size_t chunk = (part0->size - off) < 4096 ? (part0->size - off) : 4096;
+-                        if (esp_flash_read(NULL, bounce, part0->address + off, chunk) != ESP_OK) {
+-                            break;
+-                        }
++                        ESP_ERROR_CHECK(esp_flash_read(NULL, bounce, part0->address + off, chunk));
+                         memcpy(fido_flash_shadow + off, bounce, chunk);
+                     }
+@@ -581,13 +583,14 @@
+ #if defined(ESP_PLATFORM)
+     part0 = esp_partition_find_first(0x40, 0x1, "part0");
++    ESP_ERROR_CHECK(part0 ? ESP_OK : ESP_ERR_NOT_FOUND);
+     fido_flash_shadow = heap_caps_malloc(part0->size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
++    ESP_ERROR_CHECK(fido_flash_shadow ? ESP_OK : ESP_ERR_NO_MEM);
+     if (fido_flash_shadow != NULL) {
+         uint8_t *bounce = heap_caps_malloc(4096, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
++        ESP_ERROR_CHECK(bounce ? ESP_OK : ESP_ERR_NO_MEM);
+         if (bounce != NULL) {
+             for (size_t off = 0; off < part0->size; off += 4096) {
+                 size_t chunk = (part0->size - off) < 4096 ? (part0->size - off) : 4096;
+-                if (esp_flash_read(NULL, bounce, part0->address + off, chunk) != ESP_OK) {
+-                    break;
+-                }
++                ESP_ERROR_CHECK(esp_flash_read(NULL, bounce, part0->address + off, chunk));
+                 memcpy(fido_flash_shadow + off, bounce, chunk);
+             }

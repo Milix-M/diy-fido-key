@@ -1,0 +1,10 @@
+{
+  "pico-fido": "99337e1204348921452a3ce6613e8e17617d4c7d",
+  "pico-keys-sdk": "d8fce97ca761eb763869c77cc4d3b6fd0be1caf5",
+  "esp-idf": "fcae32885b0296b32044cb99ecbdc50d98dddb83",
+  "esptool": "4.12.0",
+  "third-party": {
+    "mbedtls": "068ff080b369adfac81509f9b57b2afabaf82dc5",
+    "tinycbor": "c0aad2fb2137a31b9845fbaae3653540c410f215"
+  }
+}

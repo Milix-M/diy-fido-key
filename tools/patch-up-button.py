@@ -1,56 +1,37 @@
 #!/usr/bin/env python3
-"""ユーザープレゼンス（BOOT 押下）を未コミッショニングでも必須にする。
-
-pico-keys は `phy` レコードに `PHY_UP_BTN` が無いと、ボタン待ちをせず即座に
-承認済みにする。pico-keys-sdk/src/button.c の button_timeout_seconds() が
-`phy_data.up_btn_present ? phy_data.up_btn : 0` を返し、タイムアウト 0 のときは
-button_wait_start_timeout() が SIGNAL_USER_PRESENCE_COMPLETED を即発行するため。
-
-本来は PicoKey App でコミッショニングして phy に書く。このスクリプトは
-ファーム側のデフォルトを変える代替で、phy は空のまま。
-
-    python3 patch-up-button.py vendor/pico-fido/pico-keys-sdk/src/button.c
-    python3 patch-up-button.py --seconds 60 vendor/pico-fido/pico-keys-sdk/src/button.c
-"""
+"""Set the fallback BOOT-button timeout in the pinned Pico Keys SDK."""
 import argparse
-import sys
+from pathlib import Path
+import re
 
-ORIGINAL = 'return phy_data.up_btn_present ? phy_data.up_btn : 0;'
-TEMPLATE = 'return phy_data.up_btn_present ? phy_data.up_btn : %d;'
-
-
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('button_c')
-    ap.add_argument('--seconds', type=int, default=30,
-                    help='ボタン待ちのタイムアウト秒（既定 30）')
-    args = ap.parse_args()
-
-    if args.seconds < 1 or args.seconds > 255:
-        print('ERROR: seconds は 1〜255')
-        return 1
-
-    with open(args.button_c, encoding='utf-8') as fh:
-        text = fh.read()
-
-    target = TEMPLATE % args.seconds
-    if target in text:
-        print('already patched: %s' % target)
-        return 0
-
-    count = text.count(ORIGINAL)
-    if count != 1:
-        print('ERROR: 対象行が %d 個見つかった（1個であるべき）' % count)
-        print('上流が変更された可能性がある。次で探すこと:')
-        print('  grep -n "up_btn_present ? phy_data.up_btn" %s' % args.button_c)
-        return 1
-
-    with open(args.button_c, 'w', encoding='utf-8') as fh:
-        fh.write(text.replace(ORIGINAL, target))
-
-    print('patched: %s' % target)
-    return 0
+PATTERN = re.compile(
+    r"return phy_data\.up_btn_present(?: && phy_data\.up_btn > 0)?"
+    r" \? phy_data\.up_btn : [0-9]+;"
+)
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("button_c", type=Path)
+    parser.add_argument("--seconds", type=int, default=30)
+    parser.add_argument("--require-presence", action="store_true",
+                        help="Use the fallback when a stored configuration specifies zero seconds.")
+    args = parser.parse_args()
+    minimum = 1 if args.require_presence else 0
+    if not minimum <= args.seconds <= 255:
+        parser.error(f"--seconds must be between {minimum} and 255")
+    original = args.button_c.read_text()
+    if len(PATTERN.findall(original)) != 1:
+        parser.error("Expected exactly one supported button timeout expression.")
+    condition = "phy_data.up_btn_present"
+    if args.require_presence:
+        condition += " && phy_data.up_btn > 0"
+    target = f"return {condition} ? phy_data.up_btn : {args.seconds};"
+    updated = PATTERN.sub(target, original)
+    if updated != original:
+        args.button_c.write_text(updated)
+    print(target)
+
+
+if __name__ == "__main__":
+    main()

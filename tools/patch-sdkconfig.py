@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """ESP32-S3 向けに sdkconfig を書き換える。
 
-tools/build-pico-fido-esp32s3.sh は set-target の前に sdkconfig を書き換えるが、
-set-target は sdkconfig を削除して作り直すため、その書き換えは必ず捨てられる。
+set-target は sdkconfig を削除して作り直すため、設定はその後に書き換える。
 このスクリプトは set-target の後に呼ぶ前提。
 
     python3 patch-sdkconfig.py vendor/pico-fido/sdkconfig
