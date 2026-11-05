@@ -107,7 +107,7 @@ git -C vendor/pico-fido submodule update --init --recursive
 git -C vendor/pico-fido rev-parse HEAD
 ```
 
-pico-fidoとpico-keys-sdkのコミット、ESP-IDF、esptoolは `tools/esp32-build-lock.json` に固定している。ビルド時に違いがあれば停止する。ESP-IDFの追加ライブラリは `tools/esp32-dependencies.lock` を使う。
+ビルドに使うバージョンは [esp32-build-lock.json](tools/esp32-build-lock.json) と [esp32-dependencies.lock](tools/esp32-dependencies.lock) で固定している。更新するときは設定も変更し、ビルドと実機試験をやり直す。
 
 ### 5. ビルド
 
@@ -196,125 +196,60 @@ rm esp32-lcd/mascot_80x80.h
 
 ## セキュリティプロファイル
 
-`tools/security-profiles.sh` は署名・暗号化したファームウェアを作るスクリプト。生成するファームウェアと実機の保護設定は別々に確認する。セキュリティ用のブートローダは初回起動時にeFuseを書き換えることがある。eFuseはチップ内の、一度書くと元に戻せない設定領域。
+`tools/security-profiles.sh` で署名・暗号化したファームウェアを作る。実機の保護設定と動作確認は別途必要。
 
-| プロファイル | Secure Boot | Flash Encryption | 用途 |
+| プロファイル | 起動時の署名検証 | フラッシュ暗号化 | 用途 |
 |---|---|---|---|
-| `backup` | なし | なし | 通常ビルドと同じ。開発・更新試験用 |
-| `encrypted` | RSA-3072の署名 | Developmentモード | 開発用。平文のファームウェアを書ける |
+| `backup` | なし | なし | 通常ビルド・更新試験 |
+| `encrypted` | あり | Developmentモード | 開発用 |
 | `encrypted-release` | なし | Releaseモード | 暗号化の検証用 |
-| `secure` | RSA-3072の署名 | Releaseモード | 本番向けの候補。実機の設定と試験結果を確認して使う |
+| `secure` | あり | Releaseモード | 本番向けの候補。実機試験が必要 |
 
-各ビルドの設定は `build/pico-fido-<プロファイル>/sdkconfig` に保存する。通常ビルドは `build/pico-fido-esp32s3/sdkconfig` を使う。バージョンと生成物のSHA-256は各ビルド先の `build-info.json` に記録する。
+### ビルドする
 
-セキュリティ用ビルドはPSRAMを40MHzで使い、見つからない場合は停止する。署名付きブートローダを置く領域を確保するため、パーティションテーブルは `0x10000` に置く。アプリとキーの保存領域の位置は通常ビルドと同じ。
+`secure` では次の鍵を `~/.config/diy-fido-key/secure-boot/` に用意する。ファイルの権限は所有者だけが読み書きできる `600` にする。
 
-### 実機の保護設定を確認する
+| ファイル | 内容 |
+|---|---|
+| `secure-boot-rsa3072.pem` | ファームウェアの署名鍵（RSA-3072） |
+| `flash-encryption-key.bin` | フラッシュ暗号化鍵（32バイト） |
 
-BOOTボタンを押しながらUSBを挿し、手順2でWSL2に接続してから読む。
-
-```
-. ~/esp/esp-idf-v5.5.1/export.sh
-python3 -m esptool --chip esp32s3 --no-stub -p /dev/ttyACM0 get_security_info
-```
-
-Secure Boot、Flash Encryption、Secure Download Modeと、鍵を置くeFuse領域の用途を記録する。すでに署名や暗号化が設定されている基板を更新する場合は、その基板に使った鍵が必要になる。新しい鍵を作って代用すると起動できなくなる。
-
-ESP-IDFは本番用のフラッシュ暗号化にReleaseモードを指定している。Secure Bootは起動するファームウェアの署名を検証する。設定する順序と、その後の更新制約は[ESP-IDFのセキュリティ設定手順](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/security/security-features-enablement-workflows.html)で確認する。
-
-### 新しい基板に使う署名鍵と暗号化鍵を用意する
-
-実機の設定を読み、既存の鍵を使う必要がないと確認してから行う。すでにあるファイルは上書きしない。
-
-```
-umask 077
-mkdir -p ~/.config/diy-fido-key/secure-boot
-test -e ~/.config/diy-fido-key/secure-boot/secure-boot-rsa3072.pem || \
-  python3 -m espsecure generate_signing_key --version 2 --scheme rsa3072 \
-  ~/.config/diy-fido-key/secure-boot/secure-boot-rsa3072.pem
-test -e ~/.config/diy-fido-key/secure-boot/flash-encryption-key.bin || \
-  python3 -m espsecure generate_flash_encryption_key \
-  ~/.config/diy-fido-key/secure-boot/flash-encryption-key.bin
-```
-
-署名鍵はRSA-3072、フラッシュ暗号化鍵は32バイト。ビルドスクリプトは鍵が無い場合や、鍵を他の利用者が読める権限になっている場合に停止する。保存先を変えるときは `FIDO_KEY_DIR` にそのフォルダを指定する。
-
-### 鍵を暗号化して退避する
-
-`tools/security-key-backup.py` は、署名鍵とフラッシュ暗号化鍵をパスワードで暗号化した1つのファイルに保存する。Scryptでパスワードから暗号鍵を作り、AES-256-GCMで暗号化し、改ざんを検出する。パスワードは端末の入力欄に入れる。
-
-```
-python3 tools/security-key-backup.py create \
-  --key-dir ~/.config/diy-fido-key/secure-boot \
-  --backup /退避先/security-keys.enc
-python3 tools/security-key-backup.py verify \
-  --key-dir ~/.config/diy-fido-key/secure-boot \
-  --backup /退避先/security-keys.enc
-```
-
-PCから切り離して保管する2つの媒体へコピーし、それぞれで `verify` を通す。パスワードはバックアップファイルと別に保管する。復旧時は `restore` を使い、`--key-dir` にまだ存在しないフォルダを指定する。
-
-ここで退避するのはファームウェアの署名鍵と暗号化鍵。サービスに登録したパスキーの復旧には、そのサービスの別のログイン方法や復旧コードを用意する。工場出荷時の `orig.bin` には、退避後に登録したパスキーは入っていない。
-
-### 署名・暗号化したファームウェアを作る
-
-```
+```sh
 . ~/esp/esp-idf-v5.5.1/export.sh
 sh tools/security-profiles.sh secure
 ```
 
-BOOTボタンの待ち時間は既定30秒。`UP_BUTTON_SECONDS` で1〜255秒を指定できる。セキュリティ用ビルドでは、基板に保存された設定が0秒でも既定の待ち時間を使う。
+生成物とビルドの記録（`build-info.json`）は `build/pico-fido-secure/` に保存する。BOOTボタンの待ち時間は既定30秒で、`UP_BUTTON_SECONDS` に1〜255秒を指定できる。
 
-ブートローダとアプリの署名を検証してから、次の3つをそれぞれの書き込み位置に合わせて暗号化する。
+### 本番で使う前に
 
-| ファイル | 書き込み位置 |
-|---|---|
-| `build/pico-fido-secure/bootloader/bootloader.enc.bin` | `0x0` |
-| `build/pico-fido-secure/partition_table/partition-table.enc.bin` | `0x10000` |
-| `build/pico-fido-secure/pico_fido.enc.bin` | `0x20000` |
+- 実機の保護設定を読み、使う鍵と書き込み位置を確認する。署名・暗号化済みの基板には既存の鍵を使う。
+- 署名鍵と暗号化鍵を [security-key-backup.py](tools/security-key-backup.py) の `create` でパスワードを付けて暗号化し、退避する。PCから切り離して保管する2つの媒体にコピーし、それぞれで `verify` を通す。パスワードは別に保管する。
+- 各サービスに別のログイン方法を用意し、復旧コードを保管する。この退避ファイルから、サービスに登録したパスキーは復元できない。
+- 鍵の退避と次節の試験を済ませてから、[ESP-IDFの手順](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/security/security-features-enablement-workflows.html)で保護設定を進める。設定後も認証・更新を確かめる。検証用の一時鍵は本番に使わない。
 
-実機への初回書き込みは、読み取ったeFuseの状態、使用する鍵、書き込むファイルと位置を照合してから行う。署名や暗号化の設定を始める前に、前節の鍵の退避と、次節の実機試験を済ませる。検証用の一時鍵で作ったファームウェアは、実機へ書く候補から外す。
+保護設定を保存するeFuseは一度書くと元に戻せない。セキュリティ用のブートローダは初回起動時にeFuseを書き換えることがある。`DIS_DOWNLOAD_MODE` を書くとUSB経由で更新できなくなる。
 
-### 登録したキーが更新後も使えることを確かめる
+### 更新後も同じキーで認証できるか確かめる
 
-試験用のPython環境を作り、ローカルの試験ページを起動する。
-
-```
+```sh
 python3 -m venv build/webauthn-venv
 build/webauthn-venv/bin/python -m pip install -r tools/requirements-webauthn.txt
 build/webauthn-venv/bin/python tools/webauthn_local_test.py
 ```
 
-Windowsのブラウザで `http://localhost:8787/` を開き、次の順に確かめる。WSL2にキーを接続している場合は、手順2の `usbipd detach` でWindowsに戻す。
+WSL2に接続中のキーは手順2の `usbipd detach` でWindowsに戻す。ブラウザで `http://localhost:8787/` を開く。
 
-1. 「テスト用キーを登録」を押し、PINを入力してBOOTボタンで承認する。
-2. 「初回」を選び、「認証を確認」を押す。
-3. キーを抜き差しし、「抜き差し後」を選んで同じキーで認証する。
-4. 実機の保護設定に合う更新用ファームウェアを書き込み、「更新後」を選んで同じキーで認証する。
-5. BOOTボタンを押さずに待つ場合と、ブラウザでキャンセルした場合に、認証が成功しないことを確かめる。
+1. 「テスト用キーを登録」を押し、PINを入力してBOOTボタンで承認する。「初回」を選び、「認証を確認」を押す。
+2. キーを抜き差しし、「抜き差し後」を選んで認証する。
+3. 実機の保護設定に合うファームウェアへ更新し、「更新後」を選んで認証する。キーは登録し直さない。
+4. BOOTボタンを押さずに待つ場合と、ブラウザでキャンセルした場合に認証が成功しないことを確かめる。
 
-ページはサーバー側で署名、認証ごとの確認要求、接続元、本人確認とボタン承認のフラグを検証する。公開鍵と試験記録は `build/webauthn-verification/` に残る。更新試験が終わるまでこのフォルダを保管する。PINを間違える試験はロックの原因になるため、通常の保持試験には含めない。
+試験記録は `build/webauthn-verification/` に残る。更新ではアプリ（`0x20000`）だけを書き換える方法を基本とし、キーの保存領域 `part0`（`0x200000`から1MiB）の位置と形式を保つ。
 
-### 保存領域と更新時の条件
+FIDOリセット、フラッシュ全消去、`part0` の消去、工場出荷フラッシュの書き戻しでは、登録済みのキーを失う。端末内の鍵がある `BLOCK_KEY3` と `BLOCK_KEY4` も読み取り禁止にしない。
 
-資格情報は `part0`（`0x200000`から1MiB）に保存する。この領域にはハードウェア暗号化のフラグを付けていない。pico-fidoは端末の秘密鍵をソフトウェア側で暗号化し、端末内のeFuseにある鍵から復号用の鍵を作る。鍵の内容はファームウェアから読める設計なので、Secure Bootとデバッグ経路の制限も合わせて確認する。
-
-eFuseの `BLOCK_KEY3` と `BLOCK_KEY4` はPico Keys SDKが使う。この2つを読み取り禁止にすると、現在の実装は鍵を取り出せなくなる。読み取りエラーや用途の不一致を検出した場合は、空の鍵で処理を続けず停止する。保存領域やPSRAMの確保・読み書きの失敗も停止させる。
-
-更新では、同じ保存領域の位置と形式、同じ端末内の鍵を使う。保存領域に重ならないアプリを `0x20000` に書く方法を基本とし、署名・暗号化済みの実機には、その実機に合う署名・暗号化済みのアプリを使う。ブートローダやパーティションテーブルを変える場合は、通常のアプリ更新と分けて確認する。
-
-FIDOリセット、フラッシュ全消去、`part0` の消去、工場出荷時イメージの書き戻しは、登録済みのキーを失う操作になる。保存領域の移動や形式変更には移行手順が必要。
-
-### 本番で使い始める前と、その後の確認
-
-- 各サービスに別のログイン方法を登録し、復旧コードを保管する。登録済みサービスが無い場合は、本番のキーを登録するときに用意する。
-- 実機の保護設定、署名鍵の公開情報、使った `build-info.json`、初回・抜き差し後・更新後の試験記録を保管する。
-- 署名鍵と暗号化鍵の退避を2箇所で確かめてから、eFuseの設定を進める。USB経由で更新するこの構成では、`DIS_DOWNLOAD_MODE` を書くと更新経路が閉じる。
-- 更新前に[pico-fidoのセキュリティ情報](https://github.com/polhenarejos/pico-fido/security/advisories)と[ESP-IDFのセキュリティ情報](https://github.com/espressif/esp-idf/security/advisories)を確認する。固定バージョンを変えたら、ビルドとキー保持の試験をやり直す。
-
-固定したpico-fidoのコミットには、2026年11月2日までに公開されたPIN入力長、PINロック、ボタン承認、バックアップ復元、OTP処理に関する5件の修正を含む。コードに修正が入っていることを確認した結果であり、すべての攻撃への耐性を保証するものではない。
-
-ソフトウェアの脆弱性で端末内のコードを実行される攻撃や、物理的な故障注入、過去のフラッシュ内容への巻き戻しへの耐性は未検証。これらを防ぐことが運用条件に含まれる場合は、追加の評価が終わるまで本番利用の条件を満たさない。
+バージョンを更新する前に[pico-fido](https://github.com/polhenarejos/pico-fido/security/advisories)と[ESP-IDF](https://github.com/espressif/esp-idf/security/advisories)のセキュリティ情報を確認し、更新後に同じ試験をやり直す。端末内のコード実行、物理的な故障注入、過去のフラッシュ内容への巻き戻しに対する耐性は未検証。
 
 ## 注意
 
