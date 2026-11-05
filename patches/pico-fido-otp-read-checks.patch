@@ -1,0 +1,29 @@
+--- a/src/otp/otp_esp32.c
++++ b/src/otp/otp_esp32.c
+@@ -25,4 +25,5 @@
+ 
+ #include "esp_efuse.h"
++#include "esp_err.h"
+ #include "esp_efuse_table.h"
+ #include "byte_array.h"
+@@ -169,4 +170,8 @@
+ 
+ static esp_err_t read_key_from_efuse(esp_efuse_block_t block, byte_array_t key) {
++    if (esp_efuse_get_key_purpose(block) != ESP_EFUSE_KEY_PURPOSE_USER ||
++        esp_efuse_get_key_dis_read(block)) {
++        return ESP_ERR_INVALID_STATE;
++    }
+     const esp_efuse_desc_t **key_desc = esp_efuse_get_key(block);
+     if (!key_desc) {
+@@ -299,4 +304,5 @@
+     }
+     ret = read_key_from_efuse(OTP_KEY_1, BYTE_ARRAY(_otp_key_1, sizeof(_otp_key_1)));
++    ESP_ERROR_CHECK(ret);
+     if (ret != ESP_OK) {
+         printf("Error reading OTP key 1 [%d]\n", ret);
+@@ -323,4 +329,5 @@
+     }
+     ret = read_key_from_efuse(OTP_KEY_2, BYTE_ARRAY(_otp_key_2, sizeof(_otp_key_2)));
++    ESP_ERROR_CHECK(ret);
+     if (ret != ESP_OK) {
+         printf("Error reading OTP key 2 [%d]\n", ret);

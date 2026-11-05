@@ -60,6 +60,18 @@ if [ -f "$SHADOW_PATCH" ] && ! grep -q 'fido_flash_shadow' "$SDK/src/fs/low_flas
     (cd "$SDK" && patch -p1 < "$SHADOW_PATCH")
 fi
 
+# Stop on storage errors before invalid data can be treated as an empty store.
+STORAGE_PATCH="$ROOT/patches/pico-fido-storage-read-checks.patch"
+if ! git -C "$SDK" apply --reverse --check "$STORAGE_PATCH" 2>/dev/null; then
+    git -C "$SDK" apply "$STORAGE_PATCH"
+fi
+
+# Reject inaccessible device keys instead of deriving credentials from zero-filled buffers.
+OTP_PATCH="$ROOT/patches/pico-fido-otp-read-checks.patch"
+if ! git -C "$SDK" apply --reverse --check "$OTP_PATCH" 2>/dev/null; then
+    git -C "$SDK" apply "$OTP_PATCH"
+fi
+
 MAIN="$SDK/src/main.c"
 if ! grep -q 'fido_status_lcd.h' "$MAIN"; then
     perl -0pi -e 's{(#include "led/led\.h"\n)}{$1#ifdef FIDO_STATUS_LCD\n#include "fido_status_lcd.h"\n#endif\n}' "$MAIN"
