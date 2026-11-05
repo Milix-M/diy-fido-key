@@ -202,6 +202,13 @@ rm esp32-lcd/mascot_80x80.h
 
 `tools/security-profiles.sh` は、署名・暗号化の設定を選んでファームウェアを作る。署名検証は許可した鍵で署名したファームウェアだけを起動し、フラッシュ暗号化は保存したファームウェアの読み取りを防ぐ。ビルドだけでは基板の設定は変わらない。
 
+DevelopmentとReleaseはフラッシュ暗号化のモードで、更新時に使える暗号化機能が異なる。
+
+- [Developmentモード](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/security/flash-encryption.html#development-mode)は開発・検証用。USBで送ったファームウェアを基板側で暗号化しながら書き込めるため、PCに暗号化鍵がなくても更新できる。
+- [Releaseモード](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/security/flash-encryption.html#release-mode)は本番用。USB書き込み時に基板側で暗号化する機能を停止する。USB経由の更新にはその基板と同じ暗号化鍵でPC側で暗号化したファイルを使う。設定後はDevelopmentモードに戻せない。
+
+署名検証の有無は暗号化モードとは別に決まる。このリポジトリでは本番用に署名検証も組み合わせた `secure` を使う。
+
 | プロファイル | 保護の内容 | 更新に必要なもの | 解除できない設定 |
 |---|---|---|---|
 | `backup` | 署名検証・暗号化なし | 通常のファームウェア | 新たな保護設定なし |
